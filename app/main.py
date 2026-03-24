@@ -19,17 +19,10 @@ db_dep = Annotated[Session, Depends(get_db)]
  
 
 @app.get('/')
-def root(db: db_dep):
-    return {"message": "working good"}
+def root():
+    return {"test": "working good"}
     
 
-
-@app.get('/add')
-def addUser(db: db_dep):
-    new_user = User(name="test 2", fullname="eric")
-    db.add(new_user)
-    db.commit()
-    return {"message": "New user", "User_id": new_user.id}
 
 
 
