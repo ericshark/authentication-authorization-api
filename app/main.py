@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Depends
-from routes import user_routes
+from routes import user_routes, auth_routes
 from database import SessionLocal
 from sqlalchemy import select, insert
 from sqlalchemy.orm import Session
@@ -12,6 +12,7 @@ from database import engine, get_db
 app = FastAPI()
 
 app.include_router(user_routes.router)
+app.include_router(auth_routes.router)
 
 Base.metadata.create_all(engine)
 

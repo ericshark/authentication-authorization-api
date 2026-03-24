@@ -18,6 +18,11 @@ class User(Base):
     date_created : Mapped[datetime] = mapped_column(default=func.now())
     is_active : Mapped[bool] = mapped_column(Boolean, default = True)
 
+    def __repr__(self):
+        return f"id: {self.id}, username: {self.username}"
+
+
+
 
 # class Addresss(Base):
 #     __tablename__ = "addresss"
