@@ -9,6 +9,7 @@ from database import engine, get_db
 
 
 
+
 app = FastAPI()
 
 app.include_router(user_routes.router)
@@ -16,14 +17,14 @@ app.include_router(auth_routes.router)
 
 Base.metadata.create_all(engine)
 
+
+
 db_dep = Annotated[Session, Depends(get_db)]
  
 
 @app.get('/')
 def root():
     return {"test": "working good"}
-    
-
 
 
 
