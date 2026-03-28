@@ -15,14 +15,6 @@ router = APIRouter(
 db_dep = Annotated[Session, Depends(get_db)]
 
 
-
-
-@router.get('/app')
-def returnUsers(db: db_dep):
-    stmt = select(User)
-    users = db.execute(stmt).scalars().all()
-    return users
-
 @router.get('/getUser/{user_id}', response_model=UserOut)
 def getUser(db: db_dep, user_id: int):
     stmt = select(User).where(User.id == user_id)
@@ -35,7 +27,7 @@ def updateUser(db: db_dep, user_updated: UserUpdate, user_id: int):
     stmt = update(User).where(User.id == user_id).values(**user_data).returning(User)
     user = db.execute(stmt).scalar_one_or_none()
     if not user:
-        raise HTTPException(status=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="User not found")
     db.commit()
     return user
     
@@ -46,7 +38,7 @@ def replaceUser(db: db_dep, updated_user: UserCreate, user_id: int):
     stmt = update(User).where(User.id == user_id).values(**updated_user.model_dump()).returning(User)
     result = db.execute(stmt).scalar_one_or_none()
     if not result:
-        raise HTTPException(status=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="User not found")
     db.commit()
     return result
 

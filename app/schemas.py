@@ -27,6 +27,7 @@ class UserUpdate(BaseModel):
     email : EmailStr | None = None
 
 class UpdatePassword(BaseModel):
+    username: str
     old_password: str
     new_password: str
 
@@ -34,5 +35,3 @@ class loginUser(BaseModel):
     username: str
     password: str
 
-class jwtLogin(BaseModel):
-    JWT: str
