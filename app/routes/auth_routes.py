@@ -1,23 +1,21 @@
 from fastapi import APIRouter, Depends, HTTPException
-from passlib import exc
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session
-from sqlalchemy import select, update
+from sqlalchemy import select
 from typing import Annotated
-from database import get_db
-from models import User
-from schemas import UpdatePassword, UserCreate, UserOut, loginUser
-from auth import hashPass, createJWT, verifyPass, verifyJWT
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from app.database import get_db
+from app.models import User
+from app.schemas import UpdatePassword, UserCreate
+from app.auth import hashPass, createJWT, verifyJWT, verifyPass, oauth2_scheme
+from fastapi.security import OAuth2PasswordRequestForm
+
 
 router = APIRouter(
-    prefix= "/login",
+    prefix= "/auth",
     tags = ["Auth"]
 )
 
 db_deb = Annotated[Session, Depends(get_db)]
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl= "/login/user")
-
 
 
 
@@ -37,7 +35,7 @@ def createUser(db: db_deb, new_user: UserCreate):
     user_jwt = createJWT(user.id, user_data["username"])
     return {"UserAdded": user_data["username"], "JWT":user_jwt}
 
-@router.post("/user")
+@router.post("/login")
 def loginUser(db: db_deb, user: OAuth2PasswordRequestForm = Depends()):
     stmt = select(User).where(User.username == user.username)
     response = db.execute(stmt).scalar_one_or_none()
@@ -50,11 +48,13 @@ def loginUser(db: db_deb, user: OAuth2PasswordRequestForm = Depends()):
 
 
 @router.post("/updatePassword")
-def updatePass(db: db_deb, passwords: UpdatePassword):
+def updatePass(db: db_deb, passwords: UpdatePassword, jwt: Annotated[str, Depends(oauth2_scheme)]):
     user_data = passwords.model_dump()
     try:
         stmt = select(User).where(User.username==user_data["username"])
         user = db.execute(stmt).scalar_one()
+        if int(verifyJWT(jwt)["id"]) != user.id:
+            raise HTTPException(status_code=402, detail="invalid jwt relogin")
         if verifyPass(user_data["old_password"], user.password ):
             user.password = hashPass(user_data["new_password"])
             db.commit()
@@ -69,22 +69,3 @@ def updatePass(db: db_deb, passwords: UpdatePassword):
 
 #eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjMiLCJ1c2VybmFtZSI6ImVyaWMiLCJleHAiOjE3NzQ2MjQ5NTF9.99fOv5DNa1NtBwiFbdLIVx02RkhLzGA7C2BZw1DA3FM
  
-@router.post("/getCurrentUser")
-def getCurrentUser(db: db_deb, jwt: Annotated[str ,Depends(oauth2_scheme)]):
-    payload = verifyJWT(jwt)
-    try:
-        user = db.get(User, int(payload["id"]))
-    except Exception as e:
-        print(e)
-    return {"user": UserOut.model_validate(user), "jwts": payload}
-  
-
-@router.post("/me")
-def getCurrentUser(db: db_deb, jwt: Annotated[str ,Depends(oauth2_scheme)]):
-    payload = verifyJWT(jwt)
-    try:
-        user = db.get(User, int(payload["id"]))
-    except Exception as e:
-        print(e)
-    return {"user": UserOut.model_validate(user), "jwts": payload}
-  

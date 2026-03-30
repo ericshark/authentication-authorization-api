@@ -1,11 +1,11 @@
 from fastapi import FastAPI, Depends
-from routes import user_routes, auth_routes
-from database import SessionLocal
+from app.routes import user_routes, auth_routes
+from app.database import SessionLocal
 from sqlalchemy import select, insert
 from sqlalchemy.orm import Session
-from models import User, Base
+from app.models import User, Base
 from typing import Annotated
-from database import engine, get_db
+from app.database import engine, get_db
 
 
 

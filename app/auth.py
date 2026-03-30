@@ -1,18 +1,26 @@
-from ctypes import sizeof
+
 from datetime import datetime, timedelta, timezone
 import os
-from fastapi import HTTPException
+from typing import Annotated
+
+from fastapi import Depends, HTTPException
+from fastapi.security import OAuth2PasswordBearer
 from jose import ExpiredSignatureError, JWTError, jwt
 from dotenv import load_dotenv
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from passlib import exc
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.models import User
+
 
 ph = PasswordHasher()
 #print(secrets.token_hex(32))
 
 load_dotenv()
 SECRET_KEY = os.getenv("SECRET_KEY")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl= "/login/user")
 
 def hashPass(password: str):
     result = ph.hash(password)
@@ -36,7 +44,6 @@ def createJWT(id: int, username: str):
     }
     
     result = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
-    print(result)
     return result
 
 
@@ -46,9 +53,12 @@ def verifyJWT(user_jwt: str):
     except ExpiredSignatureError as e:
         raise HTTPException(status_code=404, detail="expired JWT")
     except JWTError as e:
-        print("hello")
         raise HTTPException(status_code=404, detail="jwterror")
 
-    
 
-    
+def getUser(jwt: Annotated[str, Depends(oauth2_scheme)], db: Annotated[Session,Depends(get_db)]):
+    user = db.get(User, verifyJWT(jwt)["id"])
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    return user
+            
