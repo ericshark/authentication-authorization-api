@@ -29,7 +29,7 @@ def createUser(db: db_deb, new_user: UserCreate):
         db.add(user)
         db.commit() 
     except IntegrityError:
-        db.rollback() # VERY IMPORTANT
+        db.rollback() 
         raise HTTPException(status_code=400, detail="Username or Email already exists")
     db.refresh(user)
     user_jwt = createJWT(user.id, user_data["username"])
@@ -66,6 +66,3 @@ def updatePass(db: db_deb, passwords: UpdatePassword, jwt: Annotated[str, Depend
     return {"message": "password changed"}
 
 
-
-#eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjMiLCJ1c2VybmFtZSI6ImVyaWMiLCJleHAiOjE3NzQ2MjQ5NTF9.99fOv5DNa1NtBwiFbdLIVx02RkhLzGA7C2BZw1DA3FM
- 

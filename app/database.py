@@ -16,8 +16,6 @@ if DATABASE_URL.startswith("sqlite"):
 else:
     engine = create_engine(DATABASE_URL)
 
-
-print("Tables created succesfully")
 SessionLocal = sessionmaker(bind=engine, autoflush=False)
 
 def get_db():

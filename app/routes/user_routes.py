@@ -17,9 +17,6 @@ router = APIRouter(
 db_dep = Annotated[Session, Depends(get_db)]
 
 
-@router.get('/getanyUser/{user_id}', response_model=UserOut | None)
-def getanyUser(db: db_dep, user_id: int):
-    return db.get(User, user_id)
 @router.get("/me")
 def getCurrentUser(db: db_dep, user: Annotated[User ,Depends(getUser)]):
     return {"user": UserOut.model_validate(user)}

@@ -11,23 +11,23 @@ def test_register_success(client):
     assert response.status_code == 200
 
 def test_login_success(client):
-    # setup
+
     client.post("/auth/createUser", json={
         "username": "john",
         "name":"bob",
         "password": "secret123",
         "email": "john@example.com"
     })
-    # act
+
     response = client.post("/auth/login", data={
         "username": "john",
         "password": "secret123"
     })
-    # assert
+ 
     assert response.status_code == 200
     data = response.json()
-    assert "access_token" in data          # token exists
-    assert data["token_type"] == "bearer"  # right format
+    assert "access_token" in data          
+    assert data["token_type"] == "bearer"  
     assert len(data["access_token"]) > 20  
 
 def test_get_user(auth_client):
