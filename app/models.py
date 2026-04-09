@@ -17,6 +17,7 @@ class User(Base):
     password : Mapped[str]
     date_created : Mapped[datetime] = mapped_column(default=func.now())
     is_active : Mapped[bool] = mapped_column(Boolean, default = True)
+    role : Mapped[str] = mapped_column(default = "user", server_default="user")
 
 
     def __repr__(self):

@@ -29,4 +29,6 @@ class UpdatePassword(BaseModel):
     old_password: str
     new_password: str
 
+class RoleEnum(BaseModel):
+    pass
 

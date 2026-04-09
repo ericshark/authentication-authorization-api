@@ -15,8 +15,6 @@ app = FastAPI()
 app.include_router(user_routes.router)
 app.include_router(auth_routes.router)
 
-Base.metadata.create_all(engine)
-
 
 
 db_dep = Annotated[Session, Depends(get_db)]

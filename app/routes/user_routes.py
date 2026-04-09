@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import  update
 from typing import Annotated
-from app.auth import hashPass, verifyJWT, oauth2_scheme, getUser
+from app.auth import hashPass, verifyJWT, oauth2_scheme, get_current_user
 from app.database import get_db
 from app.models import User
 from app.schemas import UserCreate, UserOut, UserUpdate
@@ -18,16 +18,13 @@ db_dep = Annotated[Session, Depends(get_db)]
 
 
 @router.get("/me")
-def getCurrentUser(db: db_dep, user: Annotated[User ,Depends(getUser)]):
+def getCurrentUser(user: Annotated[User ,Depends(get_current_user)]):
     return {"user": UserOut.model_validate(user)}
   
 @router.patch('/update/{user_id}')
-def updateUser(db: db_dep, user_updated: UserUpdate, jwt: Annotated[str ,Depends(oauth2_scheme)]):
+def updateUser(user: Annotated[User ,Depends(get_current_user)], db: db_dep, user_updated: UserUpdate):
     user_data = user_updated.model_dump(exclude_unset=True)
-    payload = verifyJWT(jwt)
-    user_id = int(payload.get("id"))
-    stmt = update(User).where(User.id == user_id).values(user_data)
-    db.execute(stmt)
+    user = user_data
     db.commit()
     return user_data
     

@@ -1,0 +1,9 @@
+How to use alembic:
+
+alembic revision --autogenerate -m ""
+alembic upgrade head
+alembic downgrade -1                               # undo the last migration
+alembic current                                    # show what version your DB is at
+alembic history
+this is the Alembic Config object, which provides
+access to the values within the .ini file in use.

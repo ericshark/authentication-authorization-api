@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User
+from app.schemas import RoleEnum
 
 
 ph = PasswordHasher()
@@ -25,7 +26,6 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl= "/login/user")
 def hashPass(password: str):
     result = ph.hash(password)
     return result
-
 
 def verifyPass(plain: str, hashed: str):
     try:
@@ -56,9 +56,14 @@ def verifyJWT(user_jwt: str):
         raise HTTPException(status_code=404, detail="jwterror")
 
 
-def getUser(jwt: Annotated[str, Depends(oauth2_scheme)], db: Annotated[Session,Depends(get_db)]):
-    user = db.get(User, verifyJWT(jwt)["id"])
-    if not user:
+def get_current_user(jwt: Annotated[str, Depends(oauth2_scheme)], db: Annotated[Session,Depends(get_db)]):
+    try:
+        user = db.get(User, verifyJWT(jwt)["id"])
+    except HTTPException as e:
+        raise e
+    except:
         raise HTTPException(status_code=401, detail="User not found")
     return user
             
+def require_role(role: RoleEnum):
+    pass
