@@ -1,7 +1,7 @@
-from ast import Del
 
 from pydantic import BaseModel, ConfigDict, EmailStr
 from datetime import datetime
+from app.models import RoleEnum
 
 
 class UserBase(BaseModel):
@@ -17,7 +17,7 @@ class UserOut(UserBase):
     date_created : datetime 
     is_active : bool
     model_config = ConfigDict(from_attributes=True)
-
+    role : RoleEnum
 
 class UserUpdate(BaseModel):
     username : str | None = None
@@ -25,10 +25,6 @@ class UserUpdate(BaseModel):
     email : EmailStr | None = None
 
 class UpdatePassword(BaseModel):
-    username: str
     old_password: str
     new_password: str
-
-class RoleEnum(BaseModel):
-    pass
 

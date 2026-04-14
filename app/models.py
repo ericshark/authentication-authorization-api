@@ -1,11 +1,17 @@
-import datetime
-
 from datetime import datetime
-from sqlalchemy import Boolean, ForeignKey, String, Integer, func
-from sqlalchemy.orm import Mapped, mapped_column, relationship, DeclarativeBase
+from enum import Enum
+from sqlalchemy import Boolean, String, func, Enum as SQLAlchemyEnum
+from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase
 
 class Base(DeclarativeBase):
     pass
+
+
+class RoleEnum(Enum):
+    ADMIN = "admin"
+    USER = "user"
+    MODERATOR = "moderator"
+
 
 class User(Base):
     __tablename__ = "user_account"
@@ -17,13 +23,10 @@ class User(Base):
     password : Mapped[str]
     date_created : Mapped[datetime] = mapped_column(default=func.now())
     is_active : Mapped[bool] = mapped_column(Boolean, default = True)
-    role : Mapped[str] = mapped_column(default = "user", server_default="user")
-
+    role: Mapped[RoleEnum] = mapped_column(SQLAlchemyEnum(RoleEnum), default=RoleEnum.USER)
 
     def __repr__(self):
         return f"id: {self.id}, username: {self.username}"
-
-
 
 
 # class Addresss(Base):
@@ -34,5 +37,3 @@ class User(Base):
 #     user_id: Mapped[int] = mapped_column(ForeignKey("user_account.id"))
 
 #     user: Mapped[User] = relationship(back_populates="addresses")
-
-

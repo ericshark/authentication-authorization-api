@@ -1,4 +1,3 @@
-
 from datetime import datetime, timedelta, timezone
 import os
 from typing import Annotated
@@ -8,7 +7,8 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import ExpiredSignatureError, JWTError, jwt
 from dotenv import load_dotenv
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError
+from argon2.exceptions import VerifyMismatchError, Argon2Error
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -17,11 +17,11 @@ from app.schemas import RoleEnum
 
 
 ph = PasswordHasher()
-#print(secrets.token_hex(32))
+# print(secrets.token_hex(32))
 
 load_dotenv()
 SECRET_KEY = os.getenv("SECRET_KEY")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl= "/login/user")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl= "/auth/login")
 
 def hashPass(password: str):
     result = ph.hash(password)
@@ -33,7 +33,8 @@ def verifyPass(plain: str, hashed: str):
         return True
     except VerifyMismatchError:
         return False
-    except:
+    except Argon2Error as e:
+        print("Unknown Error: ", e)
         return False
 
 def createJWT(id: int, username: str):
@@ -50,9 +51,9 @@ def createJWT(id: int, username: str):
 def verifyJWT(user_jwt: str):
     try:
         return jwt.decode(user_jwt, SECRET_KEY, algorithms=["HS256"])
-    except ExpiredSignatureError as e:
+    except ExpiredSignatureError:
         raise HTTPException(status_code=404, detail="expired JWT")
-    except JWTError as e:
+    except JWTError:
         raise HTTPException(status_code=404, detail="jwterror")
 
 
@@ -60,10 +61,12 @@ def get_current_user(jwt: Annotated[str, Depends(oauth2_scheme)], db: Annotated[
     try:
         user = db.get(User, verifyJWT(jwt)["id"])
     except HTTPException as e:
+        print(e)
         raise e
-    except:
-        raise HTTPException(status_code=401, detail="User not found")
+    except SQLAlchemyError as e:
+        print(e)
+        raise e 
     return user
-            
+
 def require_role(role: RoleEnum):
     pass

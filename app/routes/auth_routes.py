@@ -6,7 +6,7 @@ from typing import Annotated
 from app.database import get_db
 from app.models import User
 from app.schemas import UpdatePassword, UserCreate
-from app.auth import hashPass, createJWT, verifyJWT, verifyPass, oauth2_scheme
+from app.auth import hashPass, createJWT, verifyJWT, verifyPass, oauth2_scheme, get_current_user
 from fastapi.security import OAuth2PasswordRequestForm
 
 
@@ -40,29 +40,22 @@ def loginUser(db: db_deb, user: OAuth2PasswordRequestForm = Depends()):
     stmt = select(User).where(User.username == user.username)
     response = db.execute(stmt).scalar_one_or_none()
     if not response:
-        raise HTTPException(status_code=404,detail="not found user")
+        raise HTTPException(status_code=404,detail="wrong username or password 1")
     if not verifyPass(user.password ,response.password):
-        raise HTTPException(status_code=400, detail="Wrong password")
+        raise HTTPException(status_code=400, detail="wrong username or password 2")
     token = createJWT(response.id, response.username)
     return {"access_token": token, "token_type": "bearer"}
 
 
 @router.post("/updatePassword")
-def updatePass(db: db_deb, passwords: UpdatePassword, jwt: Annotated[str, Depends(oauth2_scheme)]):
+def updatePass(db: db_deb, passwords: UpdatePassword, user: Annotated[User, Depends(get_current_user)]):
     user_data = passwords.model_dump()
-    try:
-        stmt = select(User).where(User.username==user_data["username"])
-        user = db.execute(stmt).scalar_one()
-        if int(verifyJWT(jwt)["id"]) != user.id:
-            raise HTTPException(status_code=402, detail="invalid jwt relogin")
-        if verifyPass(user_data["old_password"], user.password ):
-            user.password = hashPass(user_data["new_password"])
-            db.commit()
-        else:
-            raise HTTPException(status_code=400, detail="Incorrect Password")
-    except NoResultFound:
-        db.rollback()
-        raise HTTPException(status_code=404, detail="Username Not found")
+    if verifyPass(user_data["old_password"], user.password):  
+        user.password = hashPass(user_data["new_password"])
+        db.commit()
+    else:
+        raise HTTPException(status_code=400, detail="Incorrect Password")
+   
     return {"message": "password changed"}
 
 
