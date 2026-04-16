@@ -1,13 +1,13 @@
-from datetime import datetime, timedelta, timezone
 import os
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
+from argon2 import PasswordHasher
+from argon2.exceptions import Argon2Error, VerifyMismatchError
+from dotenv import load_dotenv
 from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from jose import ExpiredSignatureError, JWTError, jwt
-from dotenv import load_dotenv
-from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError, Argon2Error
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -15,21 +15,23 @@ from app.database import get_db
 from app.models import User
 from app.schemas import RoleEnum
 
-
 ph = PasswordHasher()
 # print(secrets.token_hex(32))
 
 load_dotenv()
-SECRET_KEY = os.getenv("SECRET_KEY")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl= "/auth/login")
+# Force it to be a string, even if empty
+SECRET_KEY = str(os.getenv("SECRET_KEY", "default_secret_key"))
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
 
 def hashPass(password: str):
     result = ph.hash(password)
     return result
 
+
 def verifyPass(plain: str, hashed: str):
     try:
-        ph.verify(hashed, plain) 
+        ph.verify(hashed, plain)
         return True
     except VerifyMismatchError:
         return False
@@ -37,13 +39,14 @@ def verifyPass(plain: str, hashed: str):
         print("Unknown Error: ", e)
         return False
 
+
 def createJWT(id: int, username: str):
     payload = {
         "id": str(id),
         "username": username,
-        "exp": datetime.now(timezone.utc) + timedelta(hours = 1)
+        "exp": datetime.now(timezone.utc) + timedelta(hours=1),
     }
-    
+
     result = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
     return result
 
@@ -57,7 +60,9 @@ def verifyJWT(user_jwt: str):
         raise HTTPException(status_code=404, detail="jwterror")
 
 
-def get_current_user(jwt: Annotated[str, Depends(oauth2_scheme)], db: Annotated[Session,Depends(get_db)]):
+def get_current_user(
+    jwt: Annotated[str, Depends(oauth2_scheme)], db: Annotated[Session, Depends(get_db)]
+):
     try:
         user = db.get(User, verifyJWT(jwt)["id"])
     except HTTPException as e:
@@ -65,8 +70,9 @@ def get_current_user(jwt: Annotated[str, Depends(oauth2_scheme)], db: Annotated[
         raise e
     except SQLAlchemyError as e:
         print(e)
-        raise e 
+        raise e
     return user
+
 
 def require_role(role: RoleEnum):
     pass

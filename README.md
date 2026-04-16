@@ -23,29 +23,28 @@ AuthCore handles the full user lifecycle: registration, login, session managemen
 ---
 
 ## Architecture
-```
+
 app/
-├── main.py                  # App entry point, middleware, startup
+├── main.py # App entry point, middleware, startup
 ├── core/
-│   ├── config.py            # Settings loaded from environment
-│   ├── security.py          # Hashing, JWT, token utilities
-│   ├── redis.py             # Async Redis connection factory
-│   └── dependencies.py      # get_current_user, require_role
+│ ├── config.py # Settings loaded from environment
+│ ├── security.py # Hashing, JWT, token utilities
+│ ├── redis.py # Async Redis connection factory
+│ └── dependencies.py # get_current_user, require_role
 ├── db/
-│   ├── session.py           # Async engine and session factory
-│   └── base.py              # Base model — imported by Alembic and models
-├── models/                  # SQLAlchemy table definitions
-├── schemas/                 # Pydantic request and response models
-├── crud/                    # Database operations, no business logic
+│ ├── session.py # Async engine and session factory
+│ └── base.py # Base model — imported by Alembic and models
+├── models/ # SQLAlchemy table definitions
+├── schemas/ # Pydantic request and response models
+├── crud/ # Database operations, no business logic
 ├── auth/
-│   ├── backends/
-│   │   ├── base.py          # AuthBackend abstract interface
-│   │   ├── jwt_backend.py   # Stateless JWT implementation
-│   │   └── session_backend.py  # Redis-backed session implementation
-│   └── cookies.py           # set_session_cookie, clear_session_cookie
-├── routes/                  # FastAPI routers grouped by feature
-└── tests/                   # Integration tests
-```
+│ ├── backends/
+│ │ ├── base.py # AuthBackend abstract interface
+│ │ ├── jwt_backend.py # Stateless JWT implementation
+│ │ └── session_backend.py # Redis-backed session implementation
+│ └── cookies.py # set_session_cookie, clear_session_cookie
+├── routes/ # FastAPI routers grouped by feature
+└── tests/ # Integration tests
 
 Routes never touch the database directly. CRUD never contains business logic. Schemas are the contract between the outside world and the internals. Each layer has one job.
 
@@ -54,14 +53,18 @@ Routes never touch the database directly. CRUD never contains business logic. Sc
 ## Features
 
 ### Pluggable Auth Strategy
+
 JWT and Redis-backed session strategies share a common `AuthBackend` interface. Switch between them with a single environment variable — no route handler changes required.
+
 ```bash
 AUTH_STRATEGY=jwt      # stateless, scales horizontally
 AUTH_STRATEGY=session  # stateful, real logout, Redis-backed
 ```
 
 ### Role-Based Access Control
+
 Roles (admin, user, moderator) enforced at the dependency injection layer. Route handlers contain zero access control logic.
+
 ```python
 @router.get("/admin/users", dependencies=[Depends(require_role(["admin"]))])
 async def list_users():
@@ -69,15 +72,19 @@ async def list_users():
 ```
 
 ### JWT with Refresh Tokens
+
 Short-lived access tokens (15 min) paired with long-lived refresh tokens stored as hashed values in Postgres. Explicit revocation on logout compensates for stateless token irrevocability.
 
 ### Brute Force Protection
+
 Redis-backed account lockout using atomic INCR/EXPIRE pipelines. Accounts lock for 15 minutes after 5 failed attempts. Lock check runs before any Postgres query.
 
 ### User Enumeration Prevention
+
 Identical error responses and timing for wrong password and unknown email. No information leaked about account existence.
 
 ### Account Management
+
 Full user lifecycle endpoints — change email, change password, delete account. Email changes invalidate all existing sessions immediately. Account deletion soft-deletes and revokes all tokens.
 
 ---
@@ -85,39 +92,44 @@ Full user lifecycle endpoints — change email, change password, delete account.
 ## Endpoints
 
 ### Auth
-| Method | Route | Description |
-|--------|-------|-------------|
-| POST | `/auth/register` | Create account |
-| POST | `/auth/login` | Login, returns token or sets cookie |
-| POST | `/auth/logout` | Revoke session or refresh token |
-| POST | `/auth/refresh` | Exchange refresh token for new access token |
+
+| Method | Route            | Description                                 |
+| ------ | ---------------- | ------------------------------------------- |
+| POST   | `/auth/register` | Create account                              |
+| POST   | `/auth/login`    | Login, returns token or sets cookie         |
+| POST   | `/auth/logout`   | Revoke session or refresh token             |
+| POST   | `/auth/refresh`  | Exchange refresh token for new access token |
 
 ### Account
-| Method | Route | Description |
-|--------|-------|-------------|
-| GET | `/me` | Current user profile |
-| PATCH | `/me/email` | Change email, invalidates sessions |
-| PATCH | `/me/password` | Change password, requires current password |
-| DELETE | `/me` | Delete account, requires password confirmation |
+
+| Method | Route          | Description                                    |
+| ------ | -------------- | ---------------------------------------------- |
+| GET    | `/me`          | Current user profile                           |
+| PATCH  | `/me/email`    | Change email, invalidates sessions             |
+| PATCH  | `/me/password` | Change password, requires current password     |
+| DELETE | `/me`          | Delete account, requires password confirmation |
 
 ### Admin
-| Method | Route | Description |
-|--------|-------|-------------|
-| GET | `/admin/users` | List all users |
-| PATCH | `/admin/users/{id}/role` | Change user role |
-| DELETE | `/admin/users/{id}` | Delete user account |
-| POST | `/admin/unlock/{email}` | Clear account lockout |
+
+| Method | Route                    | Description           |
+| ------ | ------------------------ | --------------------- |
+| GET    | `/admin/users`           | List all users        |
+| PATCH  | `/admin/users/{id}/role` | Change user role      |
+| DELETE | `/admin/users/{id}`      | Delete user account   |
+| POST   | `/admin/unlock/{email}`  | Clear account lockout |
 
 ---
 
 ## Running Locally
 
 ### Prerequisites
+
 - Python 3.11+
 - PostgreSQL
 - Redis
 
 ### Setup
+
 ```bash
 git clone https://github.com/ericshark/authentication-authorization-api.git
 cd authcore
@@ -142,20 +154,21 @@ Docs at `http://localhost:8000/docs`
 
 ## Environment Variables
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `DATABASE_URL` | Async Postgres connection string | `postgresql+asyncpg://user:pass@localhost/authcore` |
-| `REDIS_URL` | Redis connection string | `redis://localhost:6379` |
-| `SECRET_KEY` | JWT signing key — use a long random string | `openssl rand -hex 32` |
-| `AUTH_STRATEGY` | Auth backend to use | `jwt` or `session` |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Access token lifetime | `15` |
-| `REFRESH_TOKEN_EXPIRE_DAYS` | Refresh token lifetime | `7` |
-| `MAX_LOGIN_ATTEMPTS` | Attempts before lockout | `5` |
-| `LOCKOUT_DURATION` | Lockout duration in seconds | `900` |
+| Variable                      | Description                                | Example                                             |
+| ----------------------------- | ------------------------------------------ | --------------------------------------------------- |
+| `DATABASE_URL`                | Async Postgres connection string           | `postgresql+asyncpg://user:pass@localhost/authcore` |
+| `REDIS_URL`                   | Redis connection string                    | `redis://localhost:6379`                            |
+| `SECRET_KEY`                  | JWT signing key — use a long random string | `openssl rand -hex 32`                              |
+| `AUTH_STRATEGY`               | Auth backend to use                        | `jwt` or `session`                                  |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Access token lifetime                      | `15`                                                |
+| `REFRESH_TOKEN_EXPIRE_DAYS`   | Refresh token lifetime                     | `7`                                                 |
+| `MAX_LOGIN_ATTEMPTS`          | Attempts before lockout                    | `5`                                                 |
+| `LOCKOUT_DURATION`            | Lockout duration in seconds                | `900`                                               |
 
 ---
 
 ## Testing
+
 ```bash
 pytest tests/ -v
 ```
