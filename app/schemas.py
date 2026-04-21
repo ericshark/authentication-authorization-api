@@ -7,7 +7,7 @@ from app.models import RoleEnum
 
 class UserBase(BaseModel):
     username: str
-    name: str
+    name: str | None = None
     email: EmailStr
 
 
@@ -19,8 +19,8 @@ class UserOut(UserBase):
     id: int
     date_created: datetime
     is_active: bool
-    model_config = ConfigDict(from_attributes=True)
     role: RoleEnum
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserUpdate(BaseModel):
@@ -29,6 +29,10 @@ class UserUpdate(BaseModel):
     email: EmailStr | None = None
 
 
-class UpdatePassword(BaseModel):
+class PasswordUpdate(BaseModel):
     old_password: str
     new_password: str
+
+
+class RoleUpdate(BaseModel):
+    role: RoleEnum

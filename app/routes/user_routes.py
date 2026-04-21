@@ -1,48 +1,64 @@
-from typing import Annotated, dataclass_transform
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_user, hashPass, oauth2_scheme, verifyJWT
+from app.auth import RoleChecker, get_current_user
 from app.database import get_db
-from app.models import User
-from app.schemas import UserCreate, UserOut, UserUpdate
+from app.models import RoleEnum, User
+from app.schemas import RoleUpdate, UserOut, UserUpdate
 
-router = APIRouter(prefix="/user", tags=["Users"])
+router = APIRouter(prefix="/users", tags=["Users"])
 
 db_dep = Annotated[Session, Depends(get_db)]
 
+require_admin = RoleChecker([RoleEnum.ADMIN])
+require_staff = RoleChecker([RoleEnum.ADMIN, RoleEnum.MODERATOR])
+
 
 @router.get("/me")
-def getCurrentUser(user: Annotated[User, Depends(get_current_user)]):
-    return {"user": UserOut.model_validate(user)}
+def get_me(user: Annotated[User, Depends(get_current_user)]) -> UserOut:
+    return UserOut.model_validate(user)
 
 
-@router.patch("/update")
-def updateUser(
-    user_info: UserUpdate, db: db_dep, jwt: Annotated[str, Depends(oauth2_scheme)]
+@router.patch("/me")
+def update_user(
+    user_info: UserUpdate,
+    db: db_dep,
+    user: Annotated[User, Depends(get_current_user)],
 ):
     try:
-        user_id = verifyJWT(jwt)["id"]
         user_data = user_info.model_dump(exclude_unset=True)
-        stmt = update(User).where(User.id == user_id).values(user_data)
+        stmt = update(User).where(User.id == user.id).values(user_data)
         db.execute(stmt)
         db.commit()
-        return {"Updated": user_id}
+        return {"updated_id": user.id}
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=400, detail="Message")
+        raise HTTPException(status_code=400, detail="Username or email already taken")
 
 
-@router.put("/replace/{user_id}", response_model=UserOut)
-def replaceUser(db: db_dep, updated_user: UserCreate, user_id: int):
-    user_data = updated_user.model_dump()
-    user_data["password"] = hashPass(user_data.get("password"))
-    stmt = update(User).where(User.id == user_id).values(user_data).returning(User)
-    result = db.execute(stmt).scalar_one_or_none()
-    if not result:
+@router.get("/admin/users")
+def get_all_users(
+    db: db_dep, admin: Annotated[User, Depends(require_admin)]
+) -> list[UserOut]:
+    users = db.execute(select(User)).scalars().all()
+    return [UserOut.model_validate(u) for u in users]
+
+
+@router.patch("/admin/{u_id}/role")
+def change_role(
+    u_id: int,
+    role_update: RoleUpdate,
+    db: db_dep,
+    admin: Annotated[User, Depends(require_admin)],
+):
+    try:
+        user = db.execute(select(User).where(User.id == u_id)).scalar_one()
+        user.role = role_update.role
+        db.commit()
+        return {"updated_id": u_id, "new_role": role_update.role}
+    except NoResultFound:
         raise HTTPException(status_code=404, detail="User not found")
-    db.commit()
-    return result

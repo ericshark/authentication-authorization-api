@@ -3,11 +3,9 @@ from enum import Enum
 
 from sqlalchemy import Boolean, String, func
 from sqlalchemy import Enum as SQLAlchemyEnum
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column
 
-
-class Base(DeclarativeBase):
-    pass
+from app.base import Base
 
 
 class RoleEnum(Enum):
@@ -32,13 +30,3 @@ class User(Base):
 
     def __repr__(self):
         return f"id: {self.id}, username: {self.username}"
-
-
-# class Addresss(Base):
-#     __tablename__ = "addresss"
-
-#     id : Mapped[int] = mapped_column(primary_key=True)
-#     address: Mapped[str] = mapped_column(String(255))
-#     user_id: Mapped[int] = mapped_column(ForeignKey("user_account.id"))
-
-#     user: Mapped[User] = relationship(back_populates="addresses")

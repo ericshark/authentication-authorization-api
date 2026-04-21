@@ -8,28 +8,23 @@ from dotenv import load_dotenv
 from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from jose import ExpiredSignatureError, JWTError, jwt
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User
-from app.schemas import RoleEnum
+from app.models import RoleEnum, User
 
 ph = PasswordHasher()
-# print(secrets.token_hex(32))
 
 load_dotenv()
-# Force it to be a string, even if empty
 SECRET_KEY = str(os.getenv("SECRET_KEY", "default_secret_key"))
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
-def hashPass(password: str):
-    result = ph.hash(password)
-    return result
+def hash_password(password: str) -> str:
+    return ph.hash(password)
 
 
-def verifyPass(plain: str, hashed: str):
+def verify_password(plain: str, hashed: str) -> bool:
     try:
         ph.verify(hashed, plain)
         return True
@@ -40,39 +35,40 @@ def verifyPass(plain: str, hashed: str):
         return False
 
 
-def createJWT(id: int, username: str):
+def create_jwt(id: int, username: str) -> str:
     payload = {
         "id": str(id),
         "username": username,
         "exp": datetime.now(timezone.utc) + timedelta(hours=1),
     }
-
-    result = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
-    return result
+    return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
 
 
-def verifyJWT(user_jwt: str):
+def verify_jwt(token: str) -> dict:
     try:
-        return jwt.decode(user_jwt, SECRET_KEY, algorithms=["HS256"])
+        return jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
     except ExpiredSignatureError:
-        raise HTTPException(status_code=404, detail="expired JWT")
+        raise HTTPException(status_code=401, detail="Token has expired")
     except JWTError:
-        raise HTTPException(status_code=404, detail="jwterror")
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 
 def get_current_user(
-    jwt: Annotated[str, Depends(oauth2_scheme)], db: Annotated[Session, Depends(get_db)]
-):
-    try:
-        user = db.get(User, verifyJWT(jwt)["id"])
-    except HTTPException as e:
-        print(e)
-        raise e
-    except SQLAlchemyError as e:
-        print(e)
-        raise e
+    token: Annotated[str, Depends(oauth2_scheme)],
+    db: Annotated[Session, Depends(get_db)],
+) -> User:
+    payload = verify_jwt(token)
+    user = db.get(User, int(payload["id"]))
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not found")
     return user
 
 
-def require_role(role: RoleEnum):
-    pass
+class RoleChecker:
+    def __init__(self, allowed: list[RoleEnum]):
+        self.allowed = allowed
+
+    def __call__(self, user: Annotated[User, Depends(get_current_user)]) -> User:
+        if user.role in self.allowed:
+            return user
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
