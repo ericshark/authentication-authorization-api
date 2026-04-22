@@ -3,15 +3,17 @@ from enum import Enum
 
 from sqlalchemy import Boolean, String, func
 from sqlalchemy import Enum as SQLAlchemyEnum
-from sqlalchemy.orm import Mapped, mapped_column
-
-from app.backends.base import Base
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class RoleEnum(Enum):
     ADMIN = "admin"
     USER = "user"
     MODERATOR = "moderator"
+
+
+class Base(DeclarativeBase):
+    pass
 
 
 class User(Base):
@@ -30,3 +32,7 @@ class User(Base):
 
     def __repr__(self):
         return f"id: {self.id}, username: {self.username}"
+
+
+class Session(Base):
+    pass

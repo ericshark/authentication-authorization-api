@@ -1,15 +1,14 @@
 from abc import ABC, abstractmethod
 
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.orm import Session
+
+from app.models import User
+
 
 class AuthBackend(ABC):
     @abstractmethod
-    def login():
-        pass
+    def login(self, db: Session, form: OAuth2PasswordRequestForm) -> dict: ...
 
     @abstractmethod
-    def logout():
-        pass
-
-    @abstractmethod
-    def authenticate_request():
-        pass
+    def authenticate_request(self, db: Session) -> User: ...

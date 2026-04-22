@@ -1,21 +1,22 @@
 from typing import Annotated
 
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
-from jose import JWTError
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth.auth import create_jwt, get_current_user, hash_password, verify_password
-from app.auth.utils import get_auth_backend
-from app.backends.jwt_backend import JWTBackend
-from app.database import get_db
+from app.auth.jwt_utils import create_jwt
+from app.auth.auth import get_current_user
+
+from app.core.database import get_db
 from app.models import User
 from app.schemas import PasswordUpdate, UserCreate
-
+from app.auth.auth import auth_strat
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
+ph = PasswordHasher()
 
 db_dep = Annotated[Session, Depends(get_db)]
 
@@ -23,7 +24,7 @@ db_dep = Annotated[Session, Depends(get_db)]
 @router.post("/register")
 def register(db: db_dep, new_user: UserCreate):
     user_data = new_user.model_dump()
-    user_data["password"] = hash_password(user_data["password"])
+    user_data["password"] = ph.hash(user_data["password"])
     user = User(**user_data)
     try:
         db.add(user)
@@ -38,15 +39,7 @@ def register(db: db_dep, new_user: UserCreate):
 
 @router.post("/login")
 def login(db: db_dep, form: OAuth2PasswordRequestForm = Depends()):
-    auth_strat = get_auth_backend()
-    if auth_strat == "JWT":
-        return JWTBackend.login()
-    stmt = select(User).where(User.username == form.username)
-    db_user = db.execute(stmt).scalar_one_or_none()
-    if not db_user or not verify_password(form.password, db_user.password):
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-    token = create_jwt(db_user.id, db_user.username)
-    return {"access_token": token, "token_type": "bearer"}
+    return auth_strat.login(db, form)
 
 
 @router.patch("/password")
@@ -55,8 +48,10 @@ def update_password(
     passwords: PasswordUpdate,
     user: Annotated[User, Depends(get_current_user)],
 ):
-    if not verify_password(passwords.old_password, user.password):
-        raise HTTPException(status_code=400, detail="Incorrect current password")
-    user.password = hash_password(passwords.new_password)
+    try:
+        ph.verify(user.password, passwords.old_password)
+    except VerifyMismatchError:
+        raise HTTPException(status_code=400, detail="Incorrect password")
+    user.password = ph.hash(passwords.new_password)
     db.commit()
     return {"message": "Password updated successfully"}

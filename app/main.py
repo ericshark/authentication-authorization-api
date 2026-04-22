@@ -1,9 +1,7 @@
 import pretty_errors
 from fastapi import FastAPI
-
 from app.routes import auth_routes, user_routes
 
-pretty_errors.configure(separator_character="*", line_color=pretty_errors.BRIGHT_RED)
 
 app = FastAPI()
 

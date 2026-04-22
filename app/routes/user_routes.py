@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session
 
 from app.auth.auth import RoleChecker, get_current_user
-from app.database import get_db
+from app.core.database import get_db
 from app.models import RoleEnum, User
 from app.schemas import RoleUpdate, UserOut, UserUpdate
 
@@ -16,6 +16,13 @@ db_dep = Annotated[Session, Depends(get_db)]
 
 require_admin = RoleChecker([RoleEnum.ADMIN])
 require_staff = RoleChecker([RoleEnum.ADMIN, RoleEnum.MODERATOR])
+
+
+@router.get("/test")
+def test(db: db_dep):
+    stmt = select(User)
+    response = db.execute(stmt).scalars().all()
+    return response
 
 
 @router.get("/me")
