@@ -2,14 +2,18 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
+from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth import create_jwt, get_current_user, hash_password, verify_password
+from app.auth.auth import create_jwt, get_current_user, hash_password, verify_password
+from app.auth.utils import get_auth_backend
+from app.backends.jwt_backend import JWTBackend
 from app.database import get_db
 from app.models import User
 from app.schemas import PasswordUpdate, UserCreate
+
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -34,6 +38,9 @@ def register(db: db_dep, new_user: UserCreate):
 
 @router.post("/login")
 def login(db: db_dep, form: OAuth2PasswordRequestForm = Depends()):
+    auth_strat = get_auth_backend()
+    if auth_strat == "JWT":
+        return JWTBackend.login()
     stmt = select(User).where(User.username == form.username)
     db_user = db.execute(stmt).scalar_one_or_none()
     if not db_user or not verify_password(form.password, db_user.password):

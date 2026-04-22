@@ -5,7 +5,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session
 
-from app.auth import RoleChecker, get_current_user
+from app.auth.auth import RoleChecker, get_current_user
 from app.database import get_db
 from app.models import RoleEnum, User
 from app.schemas import RoleUpdate, UserOut, UserUpdate

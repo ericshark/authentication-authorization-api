@@ -5,7 +5,7 @@ from sqlalchemy import Boolean, String, func
 from sqlalchemy import Enum as SQLAlchemyEnum
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.base import Base
+from app.backends.base import Base
 
 
 class RoleEnum(Enum):
