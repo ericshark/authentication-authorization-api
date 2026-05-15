@@ -1,9 +1,10 @@
 from typing import Annotated
 
 from argon2 import PasswordHasher
-from argon2.exceptions import Argon2Error, VerifyMismatchError
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Cookie, Response, Request
 from fastapi.security import OAuth2PasswordBearer
+
+
 from sqlalchemy.orm import Session
 
 from app.auth.utils import get_auth_backend
@@ -13,16 +14,13 @@ from app.models import RoleEnum, User
 
 ph = PasswordHasher()
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
-auth_strat = get_auth_backend()
-
-
-def get_current_user(
-    token: Annotated[str, Depends(oauth2_scheme)],
-    db: Annotated[Session, Depends(get_db)],
-) -> User:
-    return auth_strat.authenticate_request(db, token)
+def get_current_user(db: Annotated[Session, Depends(get_db)], request: Request) -> User:
+    if not request:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return get_auth_backend().authenticate_request(
+        db, request.cookies.get("session_id") or request.cookies.get("access_token")
+    )
 
 
 class RoleChecker:

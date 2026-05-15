@@ -2,18 +2,20 @@ from typing import Annotated
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.exc import IntegrityError
+
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session
 
-from app.auth.jwt_utils import create_jwt
+
 from app.auth.auth import get_current_user
 
 from app.core.database import get_db
 from app.models import User
 from app.schemas import PasswordUpdate, UserCreate
-from app.auth.auth import auth_strat
+from app.auth.utils import get_auth_backend
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 ph = PasswordHasher()
@@ -22,24 +24,37 @@ db_dep = Annotated[Session, Depends(get_db)]
 
 
 @router.post("/register")
-def register(db: db_dep, new_user: UserCreate):
-    user_data = new_user.model_dump()
-    user_data["password"] = ph.hash(user_data["password"])
-    user = User(**user_data)
+def register(db: db_dep, new_user: UserCreate, response: Response):
     try:
+        user_data = new_user.model_dump()
+        user_data["password"] = ph.hash(user_data["password"])
+        user = User(**user_data)
         db.add(user)
         db.commit()
+        db.refresh(user)
+        get_auth_backend().registered(db, user, response)
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=400, detail="Username or email already exists")
-    db.refresh(user)
-    token = create_jwt(user.id, user_data["username"])
-    return {"access_token": token, "token_type": "bearer"}
 
 
 @router.post("/login")
-def login(db: db_dep, form: OAuth2PasswordRequestForm = Depends()):
-    return auth_strat.login(db, form)
+def login(response: Response, db: db_dep, form: OAuth2PasswordRequestForm = Depends()):
+    try:
+        stmt = select(User).where(User.username == form.username)
+        user = db.execute(stmt).scalar_one()
+        ph.verify(user.password, form.password)
+        return get_auth_backend().registered(db, user, response)
+    except (VerifyMismatchError, NoResultFound):
+        raise HTTPException(status_code=400, detail="Incorrect password or username")
+
+
+@router.post("/logout")
+def logout(
+    response: Response, db: db_dep, user: Annotated[User, Depends(get_current_user)]
+):
+
+    pass
 
 
 @router.patch("/password")

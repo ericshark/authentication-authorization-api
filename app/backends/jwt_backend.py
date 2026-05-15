@@ -1,40 +1,37 @@
 from typing import Annotated, override
 
 from argon2 import PasswordHasher
-from fastapi import Depends, HTTPException
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from argon2.exceptions import VerifyMismatchError
+from fastapi import Depends, HTTPException, Response
 from jose import JWTError
 from passlib import exc
 from sqlalchemy import select
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import Session
-from argon2.exceptions import VerifyMismatchError
 
-from app.backends.base import AuthBackend
-from app.core.database import get_db
-from app.models import User
 from app.auth.jwt_utils import create_jwt, verify_jwt
+from app.backends.base import AuthBackend
+from app.models import User
 
-db_dep = Annotated[Session, Depends(get_db)]
 ph = PasswordHasher()
 
 
 class JWTBackend(AuthBackend):
     @override
     @staticmethod
-    def login(self, db: Session, form: OAuth2PasswordRequestForm):
-        try:
-            stmt = select(User).where(User.username == form.username)
-            user = db.execute(stmt).scalar_one()
-            ph.verify(user.password, form.password)
-            token = create_jwt(user.id, user.username)
-            return {"access_token": token, "token_type": "bearer"}
-        except VerifyMismatchError:
-            raise HTTPException(status_code=400, detail="Incorrect password")
+    def registered(db: Session, user: User, response: Response):
+        jwt_token = create_jwt(user.id, user.username)
+        response.set_cookie(
+            key="access_token",
+            value=jwt_token,
+            httponly=True,
+            samesite="strict",
+            max_age=1800,
+        )
 
     @override
     @staticmethod
-    def authenticate_request(db: Session, jwt: OAuth2PasswordBearer):
+    def authenticate_request(db: Session, jwt: str):
         try:
             user_id = verify_jwt(jwt).get("id")
             user = db.get(User, user_id)

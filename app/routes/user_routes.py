@@ -30,7 +30,7 @@ def get_me(user: Annotated[User, Depends(get_current_user)]) -> UserOut:
     return UserOut.model_validate(user)
 
 
-@router.patch("/me")
+@router.patch("/update-me")
 def update_user(
     user_info: UserUpdate,
     db: db_dep,

@@ -1,9 +1,9 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 
-from sqlalchemy import Boolean, String, func
+from sqlalchemy import Boolean, ForeignKey, String, func
 from sqlalchemy import Enum as SQLAlchemyEnum
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class RoleEnum(Enum):
@@ -34,5 +34,15 @@ class User(Base):
         return f"id: {self.id}, username: {self.username}"
 
 
-class Session(Base):
-    pass
+class UserSession(Base):
+    __tablename__ = "session"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[str] = mapped_column(unique=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user_account.id"))
+    created_at: Mapped[datetime] = mapped_column(
+        default=lambda: datetime.now(timezone.utc)
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        default=lambda: datetime.now(timezone.utc) + timedelta(days=18)
+    )
