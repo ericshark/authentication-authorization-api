@@ -1,31 +1,83 @@
-def test_get_me(jwt_client):
-    response = jwt_client.get("/users/me")
+REGISTER_PAYLOAD = {
+    "username": "john",
+    "name": "John Doe",
+    "password": "secret123",
+    "email": "john@example.com",
+}
+
+
+def test_register_success(client, use_jwt):
+    response = client.post("/auth/register", json=REGISTER_PAYLOAD)
     assert response.status_code == 200
+    assert "access_token" in response.cookies
 
 
-def test_update_password_success(jwt_client):
-    response = jwt_client.patch(
-        "/auth/password",
-        json={
-            "old_password": "secret123",
-            "new_password": "newpass456",
-        },
-    )
-    assert response.status_code == 200
+def test_register_duplicate_fails(client, use_jwt):
+    client.post("/auth/register", json=REGISTER_PAYLOAD)
+    response = client.post("/auth/register", json=REGISTER_PAYLOAD)
+    assert response.status_code == 400
 
-    response = jwt_client.post(
-        "/auth/login", data={"username": "john", "password": "newpass456"}
+
+def test_login_success(client, use_jwt):
+    client.post("/auth/register", json=REGISTER_PAYLOAD)
+    response = client.post(
+        "/auth/login", data={"username": "john", "password": "secret123"}
     )
     assert response.status_code == 200
     assert "access_token" in response.cookies
 
 
+def test_login_wrong_password(client, use_jwt):
+    client.post("/auth/register", json=REGISTER_PAYLOAD)
+    response = client.post(
+        "/auth/login", data={"username": "john", "password": "wrongpass"}
+    )
+    assert response.status_code == 400
+
+
+def test_login_wrong_username(client, use_jwt):
+    client.post("/auth/register", json=REGISTER_PAYLOAD)
+    response = client.post(
+        "/auth/login", data={"username": "nobody", "password": "secret123"}
+    )
+    assert response.status_code == 400
+
+
+def test_get_me(jwt_client):
+    response = jwt_client.get("/users/me")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["username"] == "john"
+    assert data["email"] == "john@example.com"
+
+
+def test_unauthenticated_request(client, use_jwt):
+    response = client.get("/users/me")
+    assert response.status_code == 401
+
+
+def test_logout(jwt_client):
+    response = jwt_client.get("/auth/logout")
+    assert response.status_code == 200
+    assert response.json() == {"message": "no logout available"}
+
+
+def test_update_password_success(jwt_client):
+    response = jwt_client.patch(
+        "/auth/password",
+        json={"old_password": "secret123", "new_password": "newpass456"},
+    )
+    assert response.status_code == 200
+    # New password works at login
+    login = jwt_client.post(
+        "/auth/login", data={"username": "john", "password": "newpass456"}
+    )
+    assert login.status_code == 200
+
+
 def test_update_password_wrong_old_password(jwt_client):
     response = jwt_client.patch(
         "/auth/password",
-        json={
-            "old_password": "wrongpassword",
-            "new_password": "newpass456",
-        },
+        json={"old_password": "wrongpassword", "new_password": "newpass456"},
     )
     assert response.status_code == 400

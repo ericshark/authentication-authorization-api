@@ -2,8 +2,9 @@ from typing import Annotated
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, Request
 from fastapi.security import OAuth2PasswordRequestForm
+
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, NoResultFound
@@ -32,7 +33,7 @@ def register(db: db_dep, new_user: UserCreate, response: Response):
         db.add(user)
         db.commit()
         db.refresh(user)
-        get_auth_backend().registered(db, user, response)
+        return get_auth_backend().registered(db, user, response)
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=400, detail="Username or email already exists")
@@ -49,12 +50,14 @@ def login(response: Response, db: db_dep, form: OAuth2PasswordRequestForm = Depe
         raise HTTPException(status_code=400, detail="Incorrect password or username")
 
 
-@router.post("/logout")
+@router.get("/logout")
 def logout(
-    response: Response, db: db_dep, user: Annotated[User, Depends(get_current_user)]
+    response: Response,
+    request: Request,
+    db: db_dep,
+    user: Annotated[User, Depends(get_current_user)],
 ):
-
-    pass
+    return get_auth_backend().logout(response, request, db, user)
 
 
 @router.patch("/password")
@@ -68,5 +71,6 @@ def update_password(
     except VerifyMismatchError:
         raise HTTPException(status_code=400, detail="Incorrect password")
     user.password = ph.hash(passwords.new_password)
+    db.add(user)
     db.commit()
     return {"message": "Password updated successfully"}

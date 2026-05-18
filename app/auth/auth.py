@@ -16,7 +16,7 @@ ph = PasswordHasher()
 
 
 def get_current_user(db: Annotated[Session, Depends(get_db)], request: Request) -> User:
-    if not request:
+    if "session_id" not in request.cookies and "access_token" not in request.cookies:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return get_auth_backend().authenticate_request(
         db, request.cookies.get("session_id") or request.cookies.get("access_token")

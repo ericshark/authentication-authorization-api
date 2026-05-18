@@ -1,7 +1,13 @@
-import pretty_errors
+import logging
+
 from fastapi import FastAPI
+
 from app.routes import auth_routes, user_routes
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s | %(name)s | %(message)s",
+)
 
 app = FastAPI()
 

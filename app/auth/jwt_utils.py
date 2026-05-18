@@ -12,7 +12,7 @@ def create_jwt(user_id: int, username: str) -> str:
     payload = {
         "id": user_id,
         "username": username,
-        "exp": datetime.now(timezone.utc) + timedelta(hours=1),
+        "exp": datetime.now(timezone.utc) + timedelta(hours=24),
     }
     return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
 

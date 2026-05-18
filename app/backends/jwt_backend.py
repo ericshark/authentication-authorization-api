@@ -2,7 +2,7 @@ from typing import Annotated, override
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from fastapi import Depends, HTTPException, Response
+from fastapi import Depends, HTTPException, Request, Response
 from jose import JWTError
 from passlib import exc
 from sqlalchemy import select
@@ -26,8 +26,9 @@ class JWTBackend(AuthBackend):
             value=jwt_token,
             httponly=True,
             samesite="strict",
-            max_age=1800,
+            max_age=60 * 60 * 24,
         )
+        return {"message": "success"}
 
     @override
     @staticmethod
@@ -35,11 +36,18 @@ class JWTBackend(AuthBackend):
         try:
             user_id = verify_jwt(jwt).get("id")
             user = db.get(User, user_id)
+            if not user:
+                raise NoResultFound
             return user
         except JWTError:
             raise HTTPException(status_code=401, detail="Invalid or expired token")
         except NoResultFound:
             raise HTTPException(status_code=401, detail="User not found")
+
+    @override
+    @staticmethod
+    def logout(response: Response, request: Request, db: Session, user: User):
+        return {"message": "no logout available"}
 
     def __repr__(self):
         return "JWTBackend()"
