@@ -1,26 +1,29 @@
 from typing import Annotated
 
 from argon2 import PasswordHasher
-from fastapi import Depends, HTTPException, Cookie, Response, Request
-from fastapi.security import OAuth2PasswordBearer
-
-
+from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.auth.utils import get_auth_backend
+from app.backends.session_backend import SessionBackend
 from app.core.database import get_db
 from app.models import RoleEnum, User
-
 
 ph = PasswordHasher()
 
 
 def get_current_user(db: Annotated[Session, Depends(get_db)], request: Request) -> User:
-    if "session_id" not in request.cookies and "access_token" not in request.cookies:
+    backend = get_auth_backend()
+
+    if isinstance(backend, SessionBackend):
+        token = request.cookies.get("session_id")
+    else:
+        token = request.cookies.get("access_token")
+
+    if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    return get_auth_backend().authenticate_request(
-        db, request.cookies.get("session_id") or request.cookies.get("access_token")
-    )
+
+    return backend.authenticate_request(db, token)
 
 
 class RoleChecker:

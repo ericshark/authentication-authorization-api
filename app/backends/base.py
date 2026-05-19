@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 
-from fastapi.security import OAuth2PasswordRequestForm
 from fastapi import Request, Response
 from sqlalchemy.orm import Session
 
@@ -16,3 +15,6 @@ class AuthBackend(ABC):
 
     @abstractmethod
     def logout(response: Response, request: Request, db: Session, user: User): ...
+
+    @abstractmethod
+    def logout_all(response: Response, request: Request, db: Session, user: User): ...

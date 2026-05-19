@@ -36,3 +36,7 @@ class PasswordUpdate(BaseModel):
 
 class RoleUpdate(BaseModel):
     role: RoleEnum
+
+
+class RefreshTokenData(BaseModel):
+    refresh_token: str

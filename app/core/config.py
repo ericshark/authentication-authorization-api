@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     is_production: bool
+    REFRESH_TOKENS_ENABLED: bool
 
 
 settings = Settings()

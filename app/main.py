@@ -5,9 +5,12 @@ from fastapi import FastAPI
 from app.routes import auth_routes, user_routes
 
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(levelname)s | %(name)s | %(message)s",
+    level=logging.WARNING,
+    format="%(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+    #    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
+logging.getLogger("app").setLevel(logging.DEBUG)
 
 app = FastAPI()
 
