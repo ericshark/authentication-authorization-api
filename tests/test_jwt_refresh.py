@@ -24,6 +24,7 @@ def test_login_sets_refresh_token(client, use_jwt_with_refresh):
 
 def test_refresh_returns_new_access_token(jwt_refresh_client):
     response = jwt_refresh_client.get("/auth/refresh")
+    print(response.json())
     assert response.status_code == 200
     assert "access_token" in response.cookies
     assert response.json() == {"message": "success new jwt"}

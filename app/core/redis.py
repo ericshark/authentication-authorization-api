@@ -1,5 +1,32 @@
+import logging
+
+from fastapi import HTTPException
 import redis
+from redis import Redis
 from app.core.config import settings
+
+MAX_LOGIN_ATTEMPTS = 5
+LOCKOUT_DURATION = 900
+logger = logging.getLogger(__name__)
+
+
+def increment_failed_attempts(username: str, r: Redis) -> int:
+    pipe = r.pipeline()
+    pipe.incr(f"failed:{username}")
+    pipe.expire(f"failed:{username}", LOCKOUT_DURATION)
+    pipe.execute()
+
+
+def reset_failed_attempts(username, r: Redis):
+    r.delete(f"failed:{username}")
+
+
+def is_account_locked(username, r: Redis):
+    logger.debug("Here is check for account")
+    count = r.get(f"failed:{username}")
+    logger.debug("Here is count %s", type(count))
+    if count and int(count) == MAX_LOGIN_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="Too many attempts try again later")
 
 
 def get_redis():

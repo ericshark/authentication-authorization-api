@@ -4,11 +4,12 @@ from datetime import datetime, timezone
 from typing import override
 
 from fastapi import HTTPException, Request, Response
+from redis import Redis
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.backends.base import AuthBackend
-from app.core.redis import get_redis
+from app.core.config import settings
 from app.models import User, UserSession
 
 logger = logging.getLogger(__name__)
@@ -17,8 +18,7 @@ logger = logging.getLogger(__name__)
 class SessionBackend(AuthBackend):
     @override
     @staticmethod
-    def registered(db: Session, user: User, response: Response):
-        r = get_redis()
+    def registered(db: Session, user: User, response: Response, r: Redis):
         try:
             session_id = secrets.token_hex(32)
             r.set(f"session:{session_id}", str(user.id), ex=60 * 60 * 24 * 30)
@@ -34,7 +34,7 @@ class SessionBackend(AuthBackend):
                 value=session_id,
                 httponly=True,
                 samesite="strict",
-                secure=True,
+                secure=settings.is_production,
                 max_age=60 * 60 * 24 * 30,
             )
             return {"message": "success"}
@@ -44,8 +44,7 @@ class SessionBackend(AuthBackend):
 
     @override
     @staticmethod
-    def authenticate_request(db: Session, session_id: str):
-        r = get_redis()
+    def authenticate_request(db: Session, session_id: str, r: Redis):
         user_id = r.get(f"session:{session_id}")
         if not user_id:
             stmt = select(UserSession).where(UserSession.session_id == session_id)
@@ -68,8 +67,7 @@ class SessionBackend(AuthBackend):
 
     @override
     @staticmethod
-    def logout(response: Response, request: Request, db: Session, user: User):
-        r = get_redis()
+    def logout(response: Response, request: Request, db: Session, user: User, r: Redis):
         session_id = request.cookies.get("session_id")
         stmt = (
             update(UserSession)
@@ -84,8 +82,9 @@ class SessionBackend(AuthBackend):
 
     @override
     @staticmethod
-    def logout_all(response: Response, request: Request, db: Session, user: User):
-        r = get_redis()
+    def logout_all(
+        response: Response, request: Request, db: Session, user: User, r: Redis
+    ):
         stmt = select(UserSession).where(UserSession.user_id == user.id)
         sessions = db.execute(stmt).scalars().all()
         for session in sessions:

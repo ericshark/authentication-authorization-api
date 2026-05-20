@@ -1,12 +1,14 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
+from redis import Redis
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session
 
 from app.auth.auth import RoleChecker, get_current_user
 from app.core.database import get_db
+from app.core.redis import get_redis, reset_failed_attempts
 from app.models import RoleEnum, User
 from app.schemas import RoleUpdate, UserOut, UserUpdate
 
@@ -69,3 +71,13 @@ def change_role(
         return {"updated_id": u_id, "new_role": role_update.role}
     except NoResultFound:
         raise HTTPException(status_code=404, detail="User not found")
+
+
+@router.post("/admin/unlock/{username}")
+def unlock(
+    username: str,
+    admin: Annotated[User, Depends(require_admin)],
+    redis: Annotated[Redis, Depends(get_redis)],
+):
+    reset_failed_attempts(username, redis)
+    return {"message": f"succesful reset for: {username}"}

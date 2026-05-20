@@ -2,17 +2,23 @@ from typing import Annotated
 
 from argon2 import PasswordHasher
 from fastapi import Depends, HTTPException, Request
+from redis import Redis
 from sqlalchemy.orm import Session
 
 from app.auth.utils import get_auth_backend
 from app.backends.session_backend import SessionBackend
 from app.core.database import get_db
+from app.core.redis import get_redis
 from app.models import RoleEnum, User
 
 ph = PasswordHasher()
 
 
-def get_current_user(db: Annotated[Session, Depends(get_db)], request: Request) -> User:
+def get_current_user(
+    db: Annotated[Session, Depends(get_db)],
+    request: Request,
+    redis: Annotated[Redis, Depends(get_redis)],
+) -> User:
     backend = get_auth_backend()
 
     if isinstance(backend, SessionBackend):
@@ -23,7 +29,7 @@ def get_current_user(db: Annotated[Session, Depends(get_db)], request: Request) 
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    return backend.authenticate_request(db, token)
+    return backend.authenticate_request(db, token, redis)
 
 
 class RoleChecker:

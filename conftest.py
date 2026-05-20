@@ -7,6 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from app.auth.utils import get_auth_backend
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.redis import get_redis
 from app.main import app
 from app.models import Base
 
@@ -18,7 +19,7 @@ TestingSessionLocal = sessionmaker(bind=engine)
 
 @pytest.fixture
 def redis_client():
-    return fakeredis.FakeRedis()
+    return fakeredis.FakeRedis(decode_responses=True)
 
 
 @pytest.fixture
@@ -33,14 +34,15 @@ def db():
 
 
 @pytest.fixture
-def client(db, redis_client, monkeypatch):
-    import app.backends.session_backend as sb
-
-    monkeypatch.setattr(sb, "get_redis", lambda: redis_client)
+def client(db, redis_client):
 
     def override_get_db():
         yield db
 
+    def override_get_redis():
+        return redis_client
+
+    app.dependency_overrides[get_redis] = override_get_redis
     app.dependency_overrides[get_db] = override_get_db
     yield TestClient(app)
     app.dependency_overrides.clear()
@@ -50,7 +52,6 @@ def client(db, redis_client, monkeypatch):
 def use_jwt(monkeypatch):
     monkeypatch.setattr(settings, "AUTH_STRATEGY", "JWT")
     monkeypatch.setattr(settings, "REFRESH_TOKENS_ENABLED", False)
-    monkeypatch.setattr(settings, "is_production", False)
     get_auth_backend.cache_clear()
     yield
     get_auth_backend.cache_clear()
@@ -59,6 +60,7 @@ def use_jwt(monkeypatch):
 @pytest.fixture
 def use_session(monkeypatch):
     monkeypatch.setattr(settings, "AUTH_STRATEGY", "SESSION")
+    monkeypatch.setattr(settings, "is_production", False)
     get_auth_backend.cache_clear()
     yield
     get_auth_backend.cache_clear()
@@ -85,12 +87,6 @@ def jwt_client(client, use_jwt):
             "email": "john@example.com",
         },
     )
-    response = client.post(
-        "/auth/login", data={"username": "john", "password": "secret123"}
-    )
-    token = response.cookies.get("access_token")
-
-    client.cookies.update({"access_token": token})
     return client
 
 
@@ -105,12 +101,6 @@ def session_client(client, use_session):
             "email": "john@example.com",
         },
     )
-    response = client.post(
-        "/auth/login", data={"username": "john", "password": "secret123"}
-    )
-    token = response.cookies.get("session_id")
-    client.cookies.update({"session_id": token})
-
     return client
 
 
@@ -126,7 +116,5 @@ def jwt_refresh_client(client, use_jwt_with_refresh):
         },
     )
     client.cookies.clear()
-    client.post(
-        "/auth/login", data={"username": "john", "password": "secret123"}
-    )
+    client.post("/auth/login", data={"username": "john", "password": "secret123"})
     return client

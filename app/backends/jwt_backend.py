@@ -1,13 +1,12 @@
-import secrets
 from typing import override
 
 from argon2 import PasswordHasher
 from fastapi import HTTPException, Request, Response
+from redis import Redis
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.auth.jwt_utils import (
-    create_jwt,
     refresh_hash,
     set_jwt_cookie,
     set_refresh_cookie,
@@ -23,21 +22,16 @@ ph = PasswordHasher()
 class JWTBackend(AuthBackend):
     @override
     @staticmethod
-    def registered(db: Session, user: User, response: Response):
-        jwt_token = create_jwt(user.id, user.username)
-        set_jwt_cookie(response, jwt_token)
+    def registered(db: Session, user: User, response: Response, r: Redis):
+
+        set_jwt_cookie(response, user)
         if settings.REFRESH_TOKENS_ENABLED:
-            refresh_token = secrets.token_hex(32)
-            set_refresh_cookie(response, refresh_token)
-            hash_token = refresh_hash(refresh_token)
-            user_refresh = RefreshToken(user_id=user.id, hashed_token=hash_token)
-            db.add(user_refresh)
-            db.commit()
+            set_refresh_cookie(response, db, user)
         return {"message": "success"}
 
     @override
     @staticmethod
-    def authenticate_request(db: Session, jwt: str):
+    def authenticate_request(db: Session, jwt: str, r: Redis):
         user_id = verify_jwt(jwt).get("id")
         user = db.get(User, user_id)
         if not user:
@@ -46,7 +40,7 @@ class JWTBackend(AuthBackend):
 
     @override
     @staticmethod
-    def logout(response: Response, request: Request, db: Session, user: User):
+    def logout(response: Response, request: Request, db: Session, user: User, r: Redis):
         if not settings.REFRESH_TOKENS_ENABLED:
             return {"message": "no logout available"}
         raw_token = request.cookies.get("refresh_token")
@@ -66,7 +60,9 @@ class JWTBackend(AuthBackend):
 
     @override
     @staticmethod
-    def logout_all(response: Response, request: Request, db: Session, user: User):
+    def logout_all(
+        response: Response, request: Request, db: Session, user: User, r: Redis
+    ):
         if not settings.REFRESH_TOKENS_ENABLED:
             return {"message": "no logout available"}
         response.delete_cookie("access_token")
