@@ -6,6 +6,10 @@ from sqlalchemy import Enum as SQLAlchemyEnum
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
+TOKEN_EXPIRY_DAYS = 30
+TOKEN_EXPIRY_SECONDS = TOKEN_EXPIRY_DAYS * 24 * 60 * 60
+
+
 class RoleEnum(Enum):
     ADMIN = "admin"
     USER = "user"
@@ -46,7 +50,7 @@ class UserSession(Base):
     )
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc) + timedelta(days=18),
+        default=lambda: datetime.now(timezone.utc) + timedelta(days=TOKEN_EXPIRY_DAYS),
     )
 
 
@@ -59,5 +63,5 @@ class RefreshToken(Base):
     valid: Mapped[bool] = mapped_column(Boolean, default=True)
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc) + timedelta(days=18),
+        default=lambda: datetime.now(timezone.utc) + timedelta(days=TOKEN_EXPIRY_DAYS),
     )

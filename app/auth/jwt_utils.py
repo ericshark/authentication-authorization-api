@@ -7,7 +7,7 @@ from jose import ExpiredSignatureError, JWTError, jwt
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models import RefreshToken, User
+from app.models import TOKEN_EXPIRY_SECONDS, RefreshToken, User
 
 SECRET_KEY = settings.SECRET_KEY
 
@@ -38,7 +38,7 @@ def set_refresh_cookie(response: Response, db: Session, user: User):
         httponly=True,
         secure=settings.is_production,
         samesite="strict",
-        max_age=60 * 60 * 24 * 30,  # 30 days
+        max_age=TOKEN_EXPIRY_SECONDS,
     )
     hash_token = refresh_hash(refresh_token)
     user_refresh = RefreshToken(user_id=user.id, hashed_token=hash_token)
@@ -52,6 +52,7 @@ def set_jwt_cookie(response: Response, user: User):
         key="access_token",
         value=jwt_token,
         httponly=True,
+        secure=settings.is_production,
         samesite="strict",
         max_age=60 * 30,  # 30 min
     )

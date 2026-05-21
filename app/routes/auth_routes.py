@@ -65,6 +65,10 @@ def login(
         is_account_locked(form.username, redis)
         stmt = select(User).where(User.username == form.username)
         user = db.execute(stmt).scalar_one()
+        if not user.is_active:
+            raise HTTPException(
+                status_code=400, detail="Incorrect password or username"
+            )
         ph.verify(user.password, form.password)
         reset_failed_attempts(form.username, redis)
         return get_auth_backend().registered(db, user, response, redis)
@@ -137,6 +141,8 @@ def refresh_token(
         user = db.get(User, refresh_item.user_id)
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
+        if not user.is_active:
+            raise HTTPException(status_code=401, detail="Account inactive")
         set_jwt_cookie(response, user)
         return {"message": "success new jwt"}
     raise HTTPException(status_code=401, detail="Not authorized")

@@ -36,13 +36,16 @@ class JWTBackend(AuthBackend):
         user = db.get(User, user_id)
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
+        if not user.is_active:
+            raise HTTPException(status_code=401, detail="Account inactive")
         return user
 
     @override
     @staticmethod
     def logout(response: Response, request: Request, db: Session, user: User, r: Redis):
+        response.delete_cookie("access_token")
         if not settings.REFRESH_TOKENS_ENABLED:
-            return {"message": "no logout available"}
+            return {"message": "logged out"}
         raw_token = request.cookies.get("refresh_token")
         if not raw_token:
             raise HTTPException(status_code=400, detail="No refresh token in cookie")
@@ -75,6 +78,24 @@ class JWTBackend(AuthBackend):
         db.execute(stmt)
         db.commit()
         return {"message": "succesful logout"}
+
+    @override
+    @staticmethod
+    def delete_user(
+        response: Response, request: Request, db: Session, user: User, r: Redis
+    ):
+        if settings.REFRESH_TOKENS_ENABLED:
+            response.delete_cookie("refresh_token")
+            stmt = (
+                update(RefreshToken)
+                .where(RefreshToken.user_id == user.id)
+                .values(valid=False)
+            )
+            db.execute(stmt)
+        user.is_active = False
+        response.delete_cookie("access_token")
+        db.commit()
+        return {"message": "deleted account"}
 
     def __repr__(self):
         return "JWTBackend()"

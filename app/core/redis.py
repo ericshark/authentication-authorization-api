@@ -10,7 +10,7 @@ LOCKOUT_DURATION = 900
 logger = logging.getLogger(__name__)
 
 
-def increment_failed_attempts(username: str, r: Redis) -> int:
+def increment_failed_attempts(username: str, r: Redis) -> None:
     pipe = r.pipeline()
     pipe.incr(f"failed:{username}")
     pipe.expire(f"failed:{username}", LOCKOUT_DURATION)
@@ -22,10 +22,8 @@ def reset_failed_attempts(username, r: Redis):
 
 
 def is_account_locked(username, r: Redis):
-    logger.debug("Here is check for account")
     count = r.get(f"failed:{username}")
-    logger.debug("Here is count %s", type(count))
-    if count and int(count) == MAX_LOGIN_ATTEMPTS:
+    if count and int(count) >= MAX_LOGIN_ATTEMPTS:
         raise HTTPException(status_code=429, detail="Too many attempts try again later")
 
 

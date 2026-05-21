@@ -52,6 +52,7 @@ def client(db, redis_client):
 def use_jwt(monkeypatch):
     monkeypatch.setattr(settings, "AUTH_STRATEGY", "JWT")
     monkeypatch.setattr(settings, "REFRESH_TOKENS_ENABLED", False)
+    monkeypatch.setattr(settings, "is_production", False)
     get_auth_backend.cache_clear()
     yield
     get_auth_backend.cache_clear()

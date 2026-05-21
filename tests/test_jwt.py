@@ -59,7 +59,10 @@ def test_unauthenticated_request(client, use_jwt):
 def test_logout(jwt_client):
     response = jwt_client.get("/auth/logout")
     assert response.status_code == 200
-    assert response.json() == {"message": "no logout available"}
+    assert response.json() == {"message": "logged out"}
+    # Cookie cleared — subsequent request should be unauthenticated
+    response = jwt_client.get("/users/me")
+    assert response.status_code == 401
 
 
 def test_update_password_success(jwt_client):

@@ -8,18 +8,28 @@ from app.models import User
 
 
 class AuthBackend(ABC):
+    @staticmethod
     @abstractmethod
     def registered(db: Session, user: User, response: Response, redis: Redis): ...
 
+    @staticmethod
     @abstractmethod
     def authenticate_request(db: Session, token: str, redis: Redis) -> User: ...
 
+    @staticmethod
     @abstractmethod
     def logout(
         response: Response, request: Request, db: Session, user: User, redis: Redis
     ): ...
 
+    @staticmethod
     @abstractmethod
     def logout_all(
+        response: Response, request: Request, db: Session, user: User, redis: Redis
+    ): ...
+
+    @staticmethod
+    @abstractmethod
+    def delete_user(
         response: Response, request: Request, db: Session, user: User, redis: Redis
     ): ...
