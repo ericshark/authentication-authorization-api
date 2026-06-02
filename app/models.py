@@ -30,6 +30,7 @@ class User(Base):
     password: Mapped[str]
     date_created: Mapped[datetime] = mapped_column(default=func.now())
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     role: Mapped[RoleEnum] = mapped_column(
         SQLAlchemyEnum(RoleEnum), default=RoleEnum.USER
     )

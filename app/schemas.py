@@ -36,3 +36,16 @@ class PasswordUpdate(BaseModel):
 
 class RoleUpdate(BaseModel):
     role: RoleEnum
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str = Field(min_length=8)
+
+
+class MagicLinkRequest(BaseModel):
+    email: EmailStr
