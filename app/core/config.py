@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     RESEND_KEY: str
     SENDER_EMAIL: str
     APP_BASE_URL: str = "http://localhost:8000"
+    GOOGLE_CLIENT_ID: str
+    GOOGLE_CLIENT_SECRET: str
+    GOOGLE_CLIENT_URI: str
+    GITHUB_SECRET: str
+    GITHUB_CLIENT_ID: str
+    GITHUB_CLIENT_URI: str
 
 
 settings = Settings()

@@ -7,11 +7,9 @@ resend.api_key = settings.RESEND_KEY
 
 
 def send_verification_email(email: str, username: str, token: str) -> None:
-    verification_link = f"{settings.APP_BASE_URL}/auth/verify-email?token={token}"
+    verification_link = f"{settings.APP_BASE_URL}/auth/verify-user?token={token}"
     html = render_template(
-        "emails/verify_email.html",
-        username=username,
-        verification_link=verification_link,
+        "emails/verify_email.html", username=username, verify_link=verification_link
     )
     resend.Emails.send(
         {

@@ -14,7 +14,7 @@ from app.core.redis import get_redis
 from app.models import User
 from app.schemas import UserOut, UserUpdate
 
-router = APIRouter(prefix="/users", tags=["Users"])
+router = APIRouter()
 
 db_dep = Annotated[Session, Depends(get_db)]
 

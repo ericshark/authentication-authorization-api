@@ -17,7 +17,7 @@ REGISTER_PAYLOAD = {
 
 def test_forgot_password_returns_success_for_registered_email(client, use_jwt):
     client.post("/auth/register", json=REGISTER_PAYLOAD)
-    with patch("app.routes.auth_routes.send_password_reset_task") as mock_task:
+    with patch("app.routes.password_routes.send_password_reset_task") as mock_task:
         mock_task.delay = MagicMock()
         response = client.post("/auth/forgot-password", json={"email": "john@example.com"})
     assert response.status_code == 200
@@ -30,14 +30,14 @@ def test_forgot_password_returns_same_response_for_unknown_email(client, use_jwt
 
 def test_forgot_password_dispatches_task_for_registered_user(client, use_jwt):
     client.post("/auth/register", json=REGISTER_PAYLOAD)
-    with patch("app.routes.auth_routes.send_password_reset_task") as mock_task:
+    with patch("app.routes.password_routes.send_password_reset_task") as mock_task:
         mock_task.delay = MagicMock()
         client.post("/auth/forgot-password", json={"email": "john@example.com"})
     mock_task.delay.assert_called_once()
 
 
 def test_forgot_password_does_not_dispatch_task_for_unknown_email(client, use_jwt):
-    with patch("app.routes.auth_routes.send_password_reset_task") as mock_task:
+    with patch("app.routes.password_routes.send_password_reset_task") as mock_task:
         mock_task.delay = MagicMock()
         client.post("/auth/forgot-password", json={"email": "nobody@example.com"})
     mock_task.delay.assert_not_called()
@@ -45,7 +45,7 @@ def test_forgot_password_does_not_dispatch_task_for_unknown_email(client, use_jw
 
 def test_forgot_password_stores_token_in_redis(client, use_jwt, redis_client):
     client.post("/auth/register", json=REGISTER_PAYLOAD)
-    with patch("app.routes.auth_routes.send_password_reset_task") as mock_task:
+    with patch("app.routes.password_routes.send_password_reset_task") as mock_task:
         mock_task.delay = MagicMock()
         client.post("/auth/forgot-password", json={"email": "john@example.com"})
     assert len(redis_client.keys("reset:*")) == 1
@@ -53,7 +53,7 @@ def test_forgot_password_stores_token_in_redis(client, use_jwt, redis_client):
 
 def test_forgot_password_rate_limit(client, use_jwt):
     client.post("/auth/register", json=REGISTER_PAYLOAD)
-    with patch("app.routes.auth_routes.send_password_reset_task") as mock_task:
+    with patch("app.routes.password_routes.send_password_reset_task") as mock_task:
         mock_task.delay = MagicMock()
         for _ in range(3):
             assert client.post("/auth/forgot-password", json={"email": "john@example.com"}).status_code == 200

@@ -12,7 +12,7 @@ from app.core.redis import get_redis, reset_failed_attempts
 from app.models import RoleEnum, User
 from app.schemas import RoleUpdate, UserOut
 
-router = APIRouter(prefix="/admin", tags=["Admin"])
+router = APIRouter()
 
 db_dep = Annotated[Session, Depends(get_db)]
 
