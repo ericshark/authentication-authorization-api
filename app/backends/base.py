@@ -10,11 +10,13 @@ from app.models import User
 class AuthBackend(ABC):
     @staticmethod
     @abstractmethod
-    def registered(db: Session, user: User, response: Response, redis: Redis): ...
+    def registered(
+        db: Session, user: User, response: Response, redis: Redis, request: Request
+    ): ...
 
     @staticmethod
     @abstractmethod
-    def authenticate_request(db: Session, token: str, redis: Redis) -> User: ...
+    def authenticate_request(db: Session, request: Request, redis: Redis) -> User: ...
 
     @staticmethod
     @abstractmethod

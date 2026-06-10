@@ -88,7 +88,7 @@ async def google_callback(
             db.refresh(user)
 
         # issue your normal JWT/session
-        return get_auth_backend().registered(db, user, response, r)
+        return get_auth_backend().registered(db, user, response, r, request)
     except OAuthError:
         raise HTTPException(status_code=400, detail="OAuth authentication failed")
 
@@ -128,8 +128,14 @@ async def github_callback(
                 "https://api.github.com/user/emails", token=token
             )
             emails = email_resp.json()
-            primary = next((e for e in emails if e["primary"]), None)
-            email = primary["email"] if primary else None
+            if isinstance(emails, list):
+                primary = next((e for e in emails if e.get("primary")), None)
+                email = primary.get("email") if primary else None
+            if not email:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Please make your GitHub email public to use this login method",
+                )
 
         social = db.execute(
             select(SocialAccount).where(
@@ -153,6 +159,6 @@ async def github_callback(
             db.add(social)
             db.commit()
             db.refresh(user)
-        return get_auth_backend().registered(db, user, response, r)
+        return get_auth_backend().registered(db, user, response, r, request)
     except OAuthError:
         raise HTTPException(status_code=400, detail="OAuth authentication failed")

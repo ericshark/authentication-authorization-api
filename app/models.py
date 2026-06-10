@@ -28,7 +28,10 @@ class User(Base):
     name: Mapped[str | None] = mapped_column(nullable=True)
     email: Mapped[str] = mapped_column(unique=True)
     password: Mapped[str | None] = mapped_column(nullable=True)
-    date_created: Mapped[datetime] = mapped_column(default=func.now())
+    date_created: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     role: Mapped[RoleEnum] = mapped_column(
@@ -46,6 +49,12 @@ class UserSession(Base):
     session_id: Mapped[str] = mapped_column(unique=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("user_account.id"))
     valid: Mapped[bool] = mapped_column(Boolean, default=True)
+    user_agent: Mapped[str] = mapped_column(nullable=True)
+    ip_address: Mapped[str] = mapped_column(nullable=True)
+    last_active: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    device_name: Mapped[str] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -62,6 +71,10 @@ class RefreshToken(Base):
     hashed_token: Mapped[str] = mapped_column(unique=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("user_account.id"))
     valid: Mapped[bool] = mapped_column(Boolean, default=True)
+    family_id: Mapped[str]
+    user_agent: Mapped[str]
+    ip_address: Mapped[str]
+    device_name: Mapped[str]
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc) + timedelta(days=TOKEN_EXPIRY_DAYS),

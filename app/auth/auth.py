@@ -6,7 +6,6 @@ from redis import Redis
 from sqlalchemy.orm import Session
 
 from app.auth.utils import get_auth_backend
-from app.backends.session_backend import SessionBackend
 from app.core.database import get_db
 from app.core.redis import get_redis
 from app.models import RoleEnum, User
@@ -19,17 +18,7 @@ def get_current_user(
     request: Request,
     redis: Annotated[Redis, Depends(get_redis)],
 ) -> User:
-    backend = get_auth_backend()
-
-    if isinstance(backend, SessionBackend):
-        token = request.cookies.get("session_id")
-    else:
-        token = request.cookies.get("access_token")
-
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    return backend.authenticate_request(db, token, redis)
+    return get_auth_backend().authenticate_request(db, request, redis)
 
 
 class RoleChecker:

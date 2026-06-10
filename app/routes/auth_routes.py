@@ -6,14 +6,15 @@ from typing import Annotated
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from redis import Redis
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session
 
 from app.auth.auth import get_current_user
-from app.auth.jwt_utils import refresh_hash, set_jwt_cookie
+from app.auth.jwt_utils import refresh_hash, set_jwt_cookie, set_refresh_cookie
 from app.auth.utils import get_auth_backend
 from app.backends.jwt_backend import JWTBackend
 from app.core.config import settings
@@ -47,6 +48,7 @@ db_dep = Annotated[Session, Depends(get_db)]
 def register(
     db: db_dep,
     new_user: UserCreate,
+    request: Request,
     response: Response,
     redis: Annotated[Redis, Depends(get_redis)],
 ):
@@ -57,7 +59,7 @@ def register(
         db.add(user)
         db.commit()
         db.refresh(user)
-        return get_auth_backend().registered(db, user, response, redis)
+        return get_auth_backend().registered(db, user, response, redis, request)
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=400, detail="Username or email already exists")
@@ -65,6 +67,7 @@ def register(
 
 @router.post("/login")
 def login(
+    request: Request,
     response: Response,
     db: db_dep,
     redis: Annotated[Redis, Depends(get_redis)],
@@ -80,7 +83,7 @@ def login(
             )
         ph.verify(user.password, form.password)
         reset_failed_attempts(form.username, redis)
-        return get_auth_backend().registered(db, user, response, redis)
+        return get_auth_backend().registered(db, user, response, redis, request)
     except (VerifyMismatchError, NoResultFound):
         increment_failed_attempts(form.username, redis)
         raise HTTPException(status_code=400, detail="Incorrect password or username")
@@ -124,18 +127,30 @@ def refresh_token(
     hash_token = refresh_hash(raw_token)
     stmt = select(RefreshToken).where(RefreshToken.hashed_token == hash_token)
     refresh_item = db.execute(stmt).scalar_one_or_none()
-    expires_at = refresh_item.expires_at if refresh_item else None
-    if expires_at and expires_at.tzinfo is None:
+    if not refresh_item:
+        raise HTTPException(status_code=401, detail="Not authorized")
+    expires_at = refresh_item.expires_at
+    if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if refresh_item and refresh_item.valid and expires_at > datetime.now(timezone.utc):
-        user = db.get(User, refresh_item.user_id)
-        if not user:
-            raise HTTPException(status_code=401, detail="User not found")
-        if not user.is_active:
-            raise HTTPException(status_code=401, detail="Account inactive")
-        set_jwt_cookie(response, user)
-        return {"message": "success new jwt"}
-    raise HTTPException(status_code=401, detail="Not authorized")
+    if expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=401, detail="Not authorized")
+    if not refresh_item.valid:
+        stmt = (
+            update(RefreshToken)
+            .where(RefreshToken.family_id == refresh_item.family_id)
+            .values(valid=False)
+        )
+        db.execute(stmt)
+        db.commit()
+        raise HTTPException(status_code=401, detail="Not authorized")
+    user = db.get(User, refresh_item.user_id)
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="User not found")
+    refresh_item.valid = False
+    set_refresh_cookie(response, db, user, request, refresh_item.family_id)
+    set_jwt_cookie(response, user)
+    db.commit()
+    return {"message": "success new jwt"}
 
 
 @router.get("/health")
@@ -201,6 +216,7 @@ def request_magic_link(
 @router.get("/magic-link/verify")
 def verify_magic_link(
     token: str,
+    request: Request,
     response: Response,
     db: db_dep,
     redis: Annotated[Redis, Depends(get_redis)],
@@ -212,4 +228,4 @@ def verify_magic_link(
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found")
     redis.delete(f"magic:{token}")
-    return get_auth_backend().registered(db, user, response, redis)
+    return get_auth_backend().registered(db, user, response, redis, request)

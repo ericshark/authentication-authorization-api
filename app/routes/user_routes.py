@@ -56,3 +56,24 @@ def delete_user(
     except SQLAlchemyError as e:
         db.rollback()
         raise e
+
+
+@router.get("/me/sessions")
+def get_sessions(
+    response: Response,
+    request: Request,
+    db: db_dep,
+    user: Annotated[User, Depends(get_current_user)],
+    redis: Annotated[Redis, Depends(get_redis)],
+):
+    pass
+
+
+@router.delete("/me/sessions/{id}")
+def delete_session(user_id: str):
+    pass
+
+
+@router.delete("/me/sessions")
+def delete_all_sessions():
+    pass

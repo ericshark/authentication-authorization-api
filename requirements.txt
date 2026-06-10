@@ -70,7 +70,10 @@ typing-inspection==0.4.2
 typing_extensions==4.15.0
 tzdata==2026.2
 tzlocal==5.3.1
+ua-parser==1.0.2
+ua-parser-builtins==202606
 urllib3==2.7.0
+user-agents==2.2.0
 uvicorn==0.42.0
 vine==5.1.0
 wcwidth==0.7.0
