@@ -49,3 +49,10 @@ class ResetPasswordRequest(BaseModel):
 
 class MagicLinkRequest(BaseModel):
     email: EmailStr
+
+
+class SessionOutput(BaseModel):
+    user_id: int
+    ip_address: str
+    device_name: str
+    expires_at: datetime

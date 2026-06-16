@@ -30,6 +30,7 @@ class JWTBackend(AuthBackend):
         set_jwt_cookie(response, user)
         if settings.REFRESH_TOKENS_ENABLED:
             set_refresh_cookie(response, db, user, request)
+            db.commit()
         return {"message": "success"}
 
     @override
