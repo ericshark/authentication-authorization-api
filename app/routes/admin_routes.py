@@ -1,20 +1,15 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
-from redis import Redis
 from sqlalchemy import select
 from sqlalchemy.exc import NoResultFound
-from sqlalchemy.orm import Session
 
-from app.auth.auth import RoleChecker
-from app.core.database import get_db
-from app.core.redis import get_redis, reset_failed_attempts
+from app.auth.lockout import reset_failed_attempts
+from app.core.dependencies import RoleChecker, db_dep, redis_dep
 from app.models import RoleEnum, User
 from app.schemas import RoleUpdate, UserOut
 
 router = APIRouter()
-
-db_dep = Annotated[Session, Depends(get_db)]
 
 require_admin = RoleChecker([RoleEnum.ADMIN])
 require_staff = RoleChecker([RoleEnum.ADMIN, RoleEnum.MODERATOR])
@@ -48,7 +43,7 @@ def change_role(
 def unlock(
     username: str,
     admin: Annotated[User, Depends(require_admin)],
-    redis: Annotated[Redis, Depends(get_redis)],
+    redis: redis_dep,
 ):
     reset_failed_attempts(username, redis)
     return {"message": f"succesful reset for: {username}"}

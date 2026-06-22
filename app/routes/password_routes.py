@@ -1,21 +1,13 @@
 import logging
 import secrets
-from typing import Annotated
 
-from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from redis import Redis
+from fastapi import APIRouter, HTTPException, Request, Response
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
-from app.auth.auth import get_current_user
-from app.auth.utils import get_auth_backend
-from app.core.database import get_db
-from app.core.redis import (
-    check_rate_limit,
-    get_redis,
-)
+from app.auth.lockout import increment_limit, is_limit_reached
+from app.auth.passwords import hash_password, verify_password
+from app.core.dependencies import db_dep, get_auth_backend, get_user_dep, redis_dep
 from app.models import User
 from app.schemas import (
     ForgotPasswordRequest,
@@ -29,9 +21,7 @@ from app.tasks.email_tasks import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-ph = PasswordHasher()
 
-db_dep = Annotated[Session, Depends(get_db)]
 
 PASSWORD_RESET_TTL = 60 * 15  # 15 minutes
 
@@ -42,14 +32,14 @@ def update_password(
     request: Request,
     db: db_dep,
     passwords: PasswordUpdate,
-    user: Annotated[User, Depends(get_current_user)],
-    redis: Annotated[Redis, Depends(get_redis)],
+    user: get_user_dep,
+    redis: redis_dep,
 ):
     try:
-        ph.verify(user.password, passwords.old_password)
+        verify_password(user.password, passwords.old_password)
     except VerifyMismatchError:
         raise HTTPException(status_code=400, detail="Incorrect password")
-    user.password = ph.hash(passwords.new_password)
+    user.password = hash_password(passwords.new_password)
     db.commit()
     get_auth_backend().logout_all(response, request, db, user, redis)
     return {"message": "Password updated successfully"}
@@ -59,12 +49,14 @@ def update_password(
 def forgot_password(
     payload: ForgotPasswordRequest,
     db: db_dep,
-    redis: Annotated[Redis, Depends(get_redis)],
+    redis: redis_dep,
 ):
-    check_rate_limit(f"rl:reset:{payload.email}", PASSWORD_RESET_TTL, redis)
     stmt = select(User).where(User.email == payload.email)
     user = db.execute(stmt).scalar_one_or_none()
     if user and user.is_active:
+        key = f"rl:reset:{payload.email}"
+        is_limit_reached(key, redis)
+        increment_limit(key, redis)
         token = secrets.token_hex(32)
         redis.set(f"reset:{token}", str(user.id), ex=PASSWORD_RESET_TTL)
         send_password_reset_task.delay(user.email, user.email, token)
@@ -75,7 +67,7 @@ def forgot_password(
 def reset_password(
     payload: ResetPasswordRequest,
     db: db_dep,
-    redis: Annotated[Redis, Depends(get_redis)],
+    redis: redis_dep,
 ):
     user_id = redis.get(f"reset:{payload.token}")
     if not user_id:
@@ -83,7 +75,7 @@ def reset_password(
     user = db.get(User, int(user_id))
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    user.password = ph.hash(payload.new_password)
+    user.password = hash_password(payload.new_password)
     redis.delete(f"reset:{payload.token}")
     db.commit()
     return {"message": "Password reset successfully"}

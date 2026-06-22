@@ -1,23 +1,16 @@
 import logging
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from redis import Redis
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
-from app.auth.utils import get_auth_backend
-from app.core.config import settings
-from app.core.database import get_db
-from app.core.redis import get_redis
-from app.models import SocialAccount, User
 from authlib.integrations.starlette_client import OAuth, OAuthError
+from fastapi import APIRouter, HTTPException, Request, Response
+from sqlalchemy import select
+
+from app.core.config import settings
+from app.core.dependencies import db_dep, get_auth_backend, redis_dep
+from app.models import SocialAccount, User
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-db_dep = Annotated[Session, Depends(get_db)]
 
 oauth = OAuth()
 oauth.register(
@@ -43,7 +36,7 @@ async def google_callback(
     request: Request,
     db: db_dep,
     response: Response,
-    r: Annotated[Redis, Depends(get_redis)],
+    r: redis_dep,
 ):
     try:
         token = await oauth.google.authorize_access_token(request)
@@ -115,7 +108,7 @@ async def github_callback(
     request: Request,
     db: db_dep,
     response: Response,
-    r: Annotated[Redis, Depends(get_redis)],
+    r: redis_dep,
 ):
     try:
         token = await oauth.github.authorize_access_token(request)

@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     GITHUB_SECRET: str
     GITHUB_CLIENT_ID: str
     GITHUB_CLIENT_URI: str
+    TOTP: bool
+    TOTP_SECRET: str
 
 
 settings = Settings()

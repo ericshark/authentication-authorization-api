@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String
 from sqlalchemy import Enum as SQLAlchemyEnum
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -33,6 +33,9 @@ class User(Base):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    totp_secret: Mapped[str | None] = mapped_column(nullable=True)
+    totp_enabled: Mapped[bool] = mapped_column(default=False)
+    backup_codes: Mapped[list | None] = mapped_column(JSON, nullable=True)
     role: Mapped[RoleEnum] = mapped_column(
         SQLAlchemyEnum(RoleEnum), default=RoleEnum.USER
     )

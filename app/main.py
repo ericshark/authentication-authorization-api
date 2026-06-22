@@ -5,6 +5,7 @@ from app.routes import (
     auth_routes,
     oauth_routes,
     password_routes,
+    twofa_routes,
     user_routes,
     admin_routes,
 )
@@ -12,12 +13,11 @@ from app.core.config import settings
 from starlette.middleware.sessions import SessionMiddleware
 
 logging.basicConfig(
-    level=logging.WARNING,
-    format="%(name)s: %(message)s",
+    level=logging.DEBUG,
+    format=" %(levelname)s: %(name)s: %(message)s",
     datefmt="%H:%M:%S",
     #    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
-logging.getLogger("app").setLevel(logging.DEBUG)
 
 app = FastAPI()
 
@@ -28,6 +28,7 @@ app.include_router(auth_routes.router, prefix="/auth", tags=["auth"])
 app.include_router(user_routes.router, prefix="/users", tags=["users"])
 app.include_router(oauth_routes.router, prefix="/auth", tags=["oauth"])
 app.include_router(password_routes.router, prefix="/auth", tags=["password"])
+app.include_router(twofa_routes.router, prefix="/auth", tags=["two-fa"])
 
 
 @app.get("/")

@@ -3,29 +3,22 @@ import secrets
 from datetime import datetime, timezone
 from typing import Annotated
 
-from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
-from redis import Redis
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError, NoResultFound
-from sqlalchemy.orm import Session
 
-from app.auth.auth import get_current_user
-from app.auth.jwt_utils import refresh_hash, set_jwt_cookie, set_refresh_cookie
-from app.auth.utils import get_auth_backend
+from app.auth.cookies import set_jwt_cookie, set_refresh
+from app.auth.lockout import (
+    increment_limit,
+    is_limit_reached,
+)
+from app.auth.passwords import hash_password, verify_password
+from app.auth.tokens import hash_token
 from app.backends.jwt_backend import JWTBackend
 from app.core.config import settings
-from app.core.database import get_db
-from app.core.redis import (
-    check_rate_limit,
-    get_redis,
-    increment_failed_attempts,
-    is_account_locked,
-    reset_failed_attempts,
-)
+from app.core.dependencies import db_dep, get_auth_backend, get_current_user, redis_dep
 from app.models import RefreshToken, User
 from app.schemas import (
     MagicLinkRequest,
@@ -39,9 +32,6 @@ from app.tasks.email_tasks import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-ph = PasswordHasher()
-
-db_dep = Annotated[Session, Depends(get_db)]
 
 
 @router.post("/register")
@@ -50,11 +40,11 @@ def register(
     new_user: UserCreate,
     request: Request,
     response: Response,
-    redis: Annotated[Redis, Depends(get_redis)],
+    redis: redis_dep,
 ):
     try:
         user_data = new_user.model_dump()
-        user_data["password"] = ph.hash(user_data["password"])
+        user_data["password"] = hash_password(user_data["password"])
         user = User(**user_data)
         db.add(user)
         db.commit()
@@ -70,22 +60,28 @@ def login(
     request: Request,
     response: Response,
     db: db_dep,
-    redis: Annotated[Redis, Depends(get_redis)],
+    redis: redis_dep,
     form: OAuth2PasswordRequestForm = Depends(),
 ):
+    key = f"failed:{form.username}"
     try:
-        is_account_locked(form.username, redis)
+        is_limit_reached(key, redis)
         stmt = select(User).where(User.username == form.username)
         user = db.execute(stmt).scalar_one()
         if not user.is_active:
             raise HTTPException(
                 status_code=400, detail="Incorrect password or username"
             )
-        ph.verify(user.password, form.password)
-        reset_failed_attempts(form.username, redis)
+        verify_password(user.password, form.password)
+        redis.delete(key)
+        if settings.TOTP and user.totp_enabled:
+            temp_token = secrets.token_hex(32)
+            redis.set(f"2faTempToken:{user.id}", temp_token, ex=60 * 5)
+            return {"requires_2fa": True, "temp_token": temp_token, "user_id": user.id}
+
         return get_auth_backend().registered(db, user, response, redis, request)
     except (VerifyMismatchError, NoResultFound):
-        increment_failed_attempts(form.username, redis)
+        increment_limit(key, redis)
         raise HTTPException(status_code=400, detail="Incorrect password or username")
 
 
@@ -95,7 +91,7 @@ def logout(
     request: Request,
     db: db_dep,
     user: Annotated[User, Depends(get_current_user)],
-    redis: Annotated[Redis, Depends(get_redis)],
+    redis: redis_dep,
 ):
     return get_auth_backend().logout(response, request, db, user, redis)
 
@@ -106,7 +102,7 @@ def logout_all(
     request: Request,
     db: db_dep,
     user: Annotated[User, Depends(get_current_user)],
-    redis: Annotated[Redis, Depends(get_redis)],
+    redis: redis_dep,
 ):
     return get_auth_backend().logout_all(response, request, db, user, redis)
 
@@ -124,8 +120,8 @@ def refresh_token(
     raw_token = request.cookies.get("refresh_token")
     if not raw_token:
         raise HTTPException(status_code=401, detail="No refresh token")
-    hash_token = refresh_hash(raw_token)
-    stmt = select(RefreshToken).where(RefreshToken.hashed_token == hash_token)
+    hashed_token = hash_token(raw_token)
+    stmt = select(RefreshToken).where(RefreshToken.hashed_token == hashed_token)
     refresh_item = db.execute(stmt).scalar_one_or_none()
     if not refresh_item:
         raise HTTPException(status_code=401, detail="Not authorized")
@@ -147,7 +143,7 @@ def refresh_token(
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found")
     refresh_item.valid = False
-    set_refresh_cookie(response, db, user, request, refresh_item.family_id)
+    set_refresh(response, db, user, request, refresh_item.family_id)
     set_jwt_cookie(response, user)
     db.commit()
     return {"message": "success new jwt"}
@@ -165,11 +161,13 @@ VERIFICATION_TOKEN_TTL = 60 * 60  # 1 hour
 def request_verification(
     db: db_dep,
     user: Annotated[User, Depends(get_current_user)],
-    redis: Annotated[Redis, Depends(get_redis)],
+    redis: redis_dep,
 ):
+    key = f"rl:verify:{user.id}"
+    is_limit_reached(key, redis)
     if user.is_verified:
         raise HTTPException(status_code=400, detail="Account already verified")
-    check_rate_limit(f"rl:verify:{user.id}", VERIFICATION_TOKEN_TTL, redis)
+    increment_limit(key, redis, window=VERIFICATION_TOKEN_TTL)
     token = secrets.token_hex(32)
     redis.set(f"verify:{token}", str(user.id), ex=VERIFICATION_TOKEN_TTL)
     send_verification_email_task.delay(user.email, user.email, token)
@@ -180,7 +178,7 @@ def request_verification(
 def verify_email(
     token: str,
     db: db_dep,
-    redis: Annotated[Redis, Depends(get_redis)],
+    redis: redis_dep,
 ):
     user_id = redis.get(f"verify:{token}")
     if not user_id:
@@ -201,9 +199,11 @@ MAGIC_LINK_TTL = 60 * 15  # 15 minutes
 def request_magic_link(
     payload: MagicLinkRequest,
     db: db_dep,
-    redis: Annotated[Redis, Depends(get_redis)],
+    redis: redis_dep,
 ):
-    check_rate_limit(f"rl:magic:{payload.email}", MAGIC_LINK_TTL, redis)
+    key = f"rl:magic:{payload.email}"
+    is_limit_reached(key, redis)
+    increment_limit(key, redis, window=VERIFICATION_TOKEN_TTL)
     stmt = select(User).where(User.email == payload.email)
     user = db.execute(stmt).scalar_one_or_none()
     if user and user.is_active:
@@ -219,7 +219,7 @@ def verify_magic_link(
     request: Request,
     response: Response,
     db: db_dep,
-    redis: Annotated[Redis, Depends(get_redis)],
+    redis: redis_dep,
 ):
     user_id = redis.get(f"magic:{token}")
     if not user_id:

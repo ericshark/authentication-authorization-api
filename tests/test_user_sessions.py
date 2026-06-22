@@ -1,6 +1,6 @@
 from sqlalchemy import select
 
-from app.auth.jwt_utils import refresh_hash
+from app.auth.tokens import hash_token
 from app.models import RefreshToken, UserSession
 
 REGISTER_PAYLOAD = {
@@ -38,9 +38,7 @@ def test_get_sessions_lists_active_session(session_client):
 
 
 def test_get_sessions_excludes_invalid(jwt_refresh_client, db):
-    db.execute(
-        RefreshToken.__table__.update().values(valid=False)
-    )
+    db.execute(RefreshToken.__table__.update().values(valid=False))
     db.commit()
 
     response = jwt_refresh_client.get("/users/me/sessions")
@@ -55,7 +53,7 @@ def test_get_sessions_excludes_invalid(jwt_refresh_client, db):
 def test_delete_session_revokes_only_target_jwt(jwt_refresh_client, db):
     # The fixture leaves two valid refresh tokens (one from register, one from
     # login); the login token is the one currently in the cookie jar.
-    current = refresh_hash(jwt_refresh_client.cookies.get("refresh_token"))
+    current = hash_token(jwt_refresh_client.cookies.get("refresh_token"))
     tokens = db.execute(select(RefreshToken).where(RefreshToken.valid)).scalars().all()
     assert len(tokens) == 2
     target = next(t for t in tokens if t.hashed_token != current)
@@ -107,7 +105,7 @@ def test_delete_session_unknown_id_is_noop(jwt_refresh_client, db):
 # DELETE /users/me/sessions
 # ---------------------------------------------------------------------------
 def test_delete_all_sessions_keeps_current_jwt(jwt_refresh_client, db):
-    current = refresh_hash(jwt_refresh_client.cookies.get("refresh_token"))
+    current = hash_token(jwt_refresh_client.cookies.get("refresh_token"))
 
     response = jwt_refresh_client.delete("/users/me/sessions")
 

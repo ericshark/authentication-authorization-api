@@ -4,9 +4,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.auth.utils import get_auth_backend
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.dependencies import get_auth_backend
 from app.core.redis import get_redis
 from app.main import app
 from app.models import Base

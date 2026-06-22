@@ -1,30 +1,27 @@
-from datetime import datetime, timezone
-from typing import Annotated
+import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from redis import Redis
+from fastapi import APIRouter, HTTPException, Request, Response
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from sqlalchemy.orm import Session
 
-from app.auth.auth import get_current_user
-from app.auth.jwt_utils import refresh_hash
-from app.auth.utils import get_auth_backend
+from app.auth.tokens import hash_token
 from app.backends.jwt_backend import JWTBackend
-from app.core.database import get_db
-from app.core.redis import get_redis
+from app.core.dependencies import (
+    db_dep,
+    get_auth_backend,
+    get_user_dep,
+    redis_dep,
+)
 from app.models import RefreshToken, User, UserSession
 from app.schemas import SessionOutput, UserOut, UserUpdate
-import logging
 
 router = APIRouter()
 
-db_dep = Annotated[Session, Depends(get_db)]
 logger = logging.getLogger(__name__)
 
 
 @router.get("/me")
-def get_me(user: Annotated[User, Depends(get_current_user)]) -> UserOut:
+def get_me(user: get_user_dep) -> UserOut:
     return UserOut.model_validate(user)
 
 
@@ -32,7 +29,7 @@ def get_me(user: Annotated[User, Depends(get_current_user)]) -> UserOut:
 def update_user(
     user_info: UserUpdate,
     db: db_dep,
-    user: Annotated[User, Depends(get_current_user)],
+    user: get_user_dep,
 ):
     try:
         user_data = user_info.model_dump(exclude_unset=True)
@@ -45,7 +42,9 @@ def update_user(
         return {"updated_id": user.id}
     except IntegrityError:
         db.rollback()
-        logger.warning("Update conflict for user %s on fields: %s", user.id, sorted(user_data))
+        logger.warning(
+            "Update conflict for user %s on fields: %s", user.id, sorted(user_data)
+        )
         raise HTTPException(status_code=400, detail="Username or email already taken")
 
 
@@ -54,8 +53,8 @@ def delete_user(
     response: Response,
     request: Request,
     db: db_dep,
-    user: Annotated[User, Depends(get_current_user)],
-    redis: Annotated[Redis, Depends(get_redis)],
+    user: get_user_dep,
+    redis: redis_dep,
 ):
     try:
         result = get_auth_backend().delete_user(response, request, db, user, redis)
@@ -70,7 +69,7 @@ def delete_user(
 @router.get("/me/sessions", response_model=list[SessionOutput])
 def get_sessions(
     db: db_dep,
-    user: Annotated[User, Depends(get_current_user)],
+    user: get_user_dep,
 ):
     backend = get_auth_backend()
     if isinstance(backend, JWTBackend):
@@ -95,8 +94,8 @@ def get_sessions(
 @router.delete("/me/sessions/{id}")
 def delete_session(
     db: db_dep,
-    user: Annotated[User, Depends(get_current_user)],
-    redis: Annotated[Redis, Depends(get_redis)],
+    user: get_user_dep,
+    redis: redis_dep,
     id: str,
 ):
     backend = get_auth_backend()
@@ -134,13 +133,13 @@ def delete_session(
 def delete_all_sessions(
     db: db_dep,
     request: Request,
-    user: Annotated[User, Depends(get_current_user)],
-    redis: Annotated[Redis, Depends(get_redis)],
+    user: get_user_dep,
+    redis: redis_dep,
 ):
     backend = get_auth_backend()
     if isinstance(backend, JWTBackend):
         refresh_token = request.cookies.get("refresh_token")
-        hashed_token = refresh_hash(refresh_token)
+        hashed_token = hash_token(refresh_token)
         stmt = (
             update(RefreshToken)
             .where(

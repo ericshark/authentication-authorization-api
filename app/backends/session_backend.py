@@ -7,10 +7,10 @@ from redis import Redis
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
+from app.auth.cookies import set_session_cookie
+from app.auth.request_info import get_device_name, get_ip_address
 from app.backends.base import AuthBackend
-from app.core.config import settings
 from app.models import TOKEN_EXPIRY_SECONDS, User, UserSession
-from user_agents import parse
 
 
 class SessionBackend(AuthBackend):
@@ -21,13 +21,8 @@ class SessionBackend(AuthBackend):
     ):
         session_id = secrets.token_hex(32)
         r.set(f"session:{session_id}", str(user.id), ex=TOKEN_EXPIRY_SECONDS)
-        ua = parse(request.headers.get("User-Agent", ""))
-        device_name = f"{ua.browser.family} on {ua.os.family}"
-        ip_address = (
-            request.headers.get("X-Forwarded-For")
-            or (request.client.host if request.client else None)
-            or "unknown"
-        )
+        device_name = get_device_name(request)
+        ip_address = get_ip_address(request)
         session = UserSession(
             session_id=session_id,
             user_id=user.id,
@@ -38,15 +33,7 @@ class SessionBackend(AuthBackend):
         )
         db.add(session)
         db.commit()
-
-        response.set_cookie(
-            key="session_id",
-            value=session_id,
-            httponly=True,
-            samesite="strict",
-            secure=settings.is_production,
-            max_age=TOKEN_EXPIRY_SECONDS,
-        )
+        set_session_cookie(response, user, session_id)
         return {"message": "success"}
 
     @override

@@ -56,3 +56,13 @@ class SessionOutput(BaseModel):
     ip_address: str
     device_name: str
     expires_at: datetime
+
+
+class Verify2fa(BaseModel):
+    temp_token: str
+    code: str
+    user_id: int
+
+
+class SecretToken(BaseModel):
+    secret_token: str

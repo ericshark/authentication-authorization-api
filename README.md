@@ -1,206 +1,112 @@
 # AuthCore
 
-A production-grade authentication and authorization API built with FastAPI. Designed as a reusable identity layer — drop it into any project that needs users and auth is solved from day one.
-
----
-
-## What it does
-
-AuthCore handles the full user lifecycle: registration, login, session management, role-based access control, brute force protection, and account management. Every security decision has an explicit reason behind it.
-
----
-
-## Tech Stack
-
-- **FastAPI** — async framework, dependency injection, automatic OpenAPI docs
-- **PostgreSQL** — primary data store via asyncpg async driver
-- **SQLAlchemy 2.0** — async ORM with Alembic migrations
-- **Redis** — session storage, account lockout counters
-- **PyJWT** — token signing and validation
-- **bcrypt via passlib** — password hashing
-- **Pytest + HTTPX** — async integration tests with isolated database state per test
-
----
-
-## Architecture
-
-app/
-├── main.py # App entry point, middleware, startup
-├── core/
-│ ├── config.py # Settings loaded from environment
-│ ├── security.py # Hashing, JWT, token utilities
-│ ├── redis.py # Async Redis connection factory
-│ └── dependencies.py # get_current_user, require_role
-├── db/
-│ ├── session.py # Async engine and session factory
-│ └── base.py # Base model — imported by Alembic and models
-├── models/ # SQLAlchemy table definitions
-├── schemas/ # Pydantic request and response models
-├── crud/ # Database operations, no business logic
-├── auth/
-│ ├── backends/
-│ │ ├── base.py # AuthBackend abstract interface
-│ │ ├── jwt_backend.py # Stateless JWT implementation
-│ │ └── session_backend.py # Redis-backed session implementation
-│ └── cookies.py # set_session_cookie, clear_session_cookie
-├── routes/ # FastAPI routers grouped by feature
-└── tests/ # Integration tests
-
-Routes never touch the database directly. CRUD never contains business logic. Schemas are the contract between the outside world and the internals. Each layer has one job.
-
----
+FastAPI authentication API with cookie-based JWT or Redis-backed sessions, account management, OAuth login, email workflows, and role-based access control.
 
 ## Features
 
-### Pluggable Auth Strategy
+- Swappable auth backend: `AUTH_STRATEGY=JWT` or `AUTH_STRATEGY=SESSION`
+- HTTP-only auth cookies with 30-minute access JWTs
+- Optional refresh tokens with rotation, hashed storage, device metadata, and reuse-family invalidation
+- Redis-backed sessions with real logout, logout-all, session listing, and per-session revocation
+- Registration, login, logout, account update, password change, soft delete, and admin user management
+- Brute-force login lockout plus rate limits for email verification, password reset, and magic links
+- Email verification, password reset, and passwordless magic-link login
+- Google and GitHub OAuth account creation/linking
+- Role checks for `admin`, `moderator`, and `user`
+- TOTP two-factor authentication with encrypted secrets, backup codes, and rate-limited verification
+- Celery email jobs, Jinja email templates, and Resend delivery
+- Docker Compose for API, Celery, Postgres, and Redis
+- 115+ pytest cases covering auth flows, sessions, refresh tokens, OAuth, magic links, password reset, email verification, 2FA, and user deletion
 
-JWT and Redis-backed session strategies share a common `AuthBackend` interface. Switch between them with a single environment variable — no route handler changes required.
+## Stack
 
-```bash
-AUTH_STRATEGY=jwt      # stateless, scales horizontally
-AUTH_STRATEGY=session  # stateful, real logout, Redis-backed
-```
+FastAPI, SQLAlchemy, Alembic, PostgreSQL, Redis, Celery, Authlib, PyOTP, python-jose, Argon2, Jinja, Resend, Pytest, HTTPX.
 
-### Role-Based Access Control
-
-Roles (admin, user, moderator) enforced at the dependency injection layer. Route handlers contain zero access control logic.
-
-```python
-@router.get("/admin/users", dependencies=[Depends(require_role(["admin"]))])
-async def list_users():
-    ...
-```
-
-### JWT with Refresh Tokens
-
-Short-lived access tokens (15 min) paired with long-lived refresh tokens stored as hashed values in Postgres. Explicit revocation on logout compensates for stateless token irrevocability.
-
-### Brute Force Protection
-
-Redis-backed account lockout using atomic INCR/EXPIRE pipelines. Accounts lock for 15 minutes after 5 failed attempts. Lock check runs before any Postgres query.
-
-### User Enumeration Prevention
-
-Identical error responses and timing for wrong password and unknown email. No information leaked about account existence.
-
-### Account Management
-
-Full user lifecycle endpoints — change email, change password, delete account. Email changes invalidate all existing sessions immediately. Account deletion soft-deletes and revokes all tokens.
-
----
-
-## Endpoints
+## API
 
 ### Auth
 
-| Method | Route            | Description                                 |
-| ------ | ---------------- | ------------------------------------------- |
-| POST   | `/auth/register` | Create account                              |
-| POST   | `/auth/login`    | Login, returns token or sets cookie         |
-| POST   | `/auth/logout`   | Revoke session or refresh token             |
-| POST   | `/auth/refresh`  | Exchange refresh token for new access token |
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `POST` | `/auth/register` | Create account |
+| `POST` | `/auth/login` | Log in with username/password |
+| `GET` | `/auth/logout` | Revoke current session/token |
+| `GET` | `/auth/logout-all` | Revoke all sessions/tokens |
+| `GET` | `/auth/refresh` | Rotate refresh token and issue a new access JWT |
+| `GET` | `/auth/verify-user` | Send verification email |
+| `GET` | `/auth/verify-email?token=...` | Verify email token |
+| `POST` | `/auth/magic-link` | Send passwordless login link |
+| `GET` | `/auth/magic-link/verify?token=...` | Log in from magic link |
 
-### Account
+### Password, OAuth, and 2FA
 
-| Method | Route          | Description                                    |
-| ------ | -------------- | ---------------------------------------------- |
-| GET    | `/me`          | Current user profile                           |
-| PATCH  | `/me/email`    | Change email, invalidates sessions             |
-| PATCH  | `/me/password` | Change password, requires current password     |
-| DELETE | `/me`          | Delete account, requires password confirmation |
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `PATCH` | `/auth/password` | Change password and revoke sessions |
+| `POST` | `/auth/forgot-password` | Send password reset link |
+| `POST` | `/auth/reset-password` | Reset password with token |
+| `GET` | `/auth/google` | Start Google OAuth |
+| `GET` | `/auth/google/callback` | Google OAuth callback |
+| `GET` | `/auth/github` | Start GitHub OAuth |
+| `GET` | `/auth/github/callback` | GitHub OAuth callback |
+| `POST` | `/auth/2fa/setup` | Generate TOTP secret and QR code |
+| `POST` | `/auth/2fa/confirm` | Confirm TOTP code and receive backup codes |
+| `POST` | `/auth/2fa/verify` | Verify TOTP or backup code after login |
 
-### Admin
+### Users and Admin
 
-| Method | Route                    | Description           |
-| ------ | ------------------------ | --------------------- |
-| GET    | `/admin/users`           | List all users        |
-| PATCH  | `/admin/users/{id}/role` | Change user role      |
-| DELETE | `/admin/users/{id}`      | Delete user account   |
-| POST   | `/admin/unlock/{email}`  | Clear account lockout |
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `GET` | `/users/me` | Current profile |
+| `PATCH` | `/users/update-me` | Update profile fields |
+| `DELETE` | `/users/me/delete` | Soft-delete account |
+| `GET` | `/users/me/sessions` | List active sessions or refresh tokens |
+| `DELETE` | `/users/me/sessions/{id}` | Revoke one session/token |
+| `DELETE` | `/users/me/sessions` | Revoke all other sessions/tokens |
+| `GET` | `/admin/users` | Admin: list users |
+| `PATCH` | `/admin/{u_id}/role` | Admin: change role |
+| `POST` | `/admin/unlock/{username}` | Admin: clear login lockout |
 
----
-
-## Running Locally
-
-### Prerequisites
-
-- Python 3.11+
-- PostgreSQL
-- Redis
-
-### Setup
+## Run Locally
 
 ```bash
-git clone https://github.com/ericshark/authentication-authorization-api.git
-cd authcore
-
 python -m venv venv
 source venv/bin/activate
-
 pip install -r requirements.txt
 
-cp .env.example .env
-# fill in your values
-
 alembic upgrade head
-
 uvicorn app.main:app --reload
 ```
 
-API available at `http://localhost:8000`  
-Docs at `http://localhost:8000/docs`
+Docs: `http://localhost:8000/docs`
 
----
-
-## Environment Variables
-
-| Variable                      | Description                                | Example                                             |
-| ----------------------------- | ------------------------------------------ | --------------------------------------------------- |
-| `DATABASE_URL`                | Async Postgres connection string           | `postgresql+asyncpg://user:pass@localhost/authcore` |
-| `REDIS_URL`                   | Redis connection string                    | `redis://localhost:6379`                            |
-| `SECRET_KEY`                  | JWT signing key — use a long random string | `openssl rand -hex 32`                              |
-| `AUTH_STRATEGY`               | Auth backend to use                        | `jwt` or `session`                                  |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Access token lifetime                      | `15`                                                |
-| `REFRESH_TOKEN_EXPIRE_DAYS`   | Refresh token lifetime                     | `7`                                                 |
-| `MAX_LOGIN_ATTEMPTS`          | Attempts before lockout                    | `5`                                                 |
-| `LOCKOUT_DURATION`            | Lockout duration in seconds                | `900`                                               |
-
----
-
-## Testing
+With containers:
 
 ```bash
-pytest tests/ -v
+docker compose up --build
 ```
 
-40+ integration tests with isolated database state per test. Covers registration, login, token validation, protected routes, role enforcement, lockout behavior, refresh token flow, and intentional failure cases.
+## Environment
 
----
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | SQLAlchemy database URL |
+| `SECRET_KEY` | JWT and session signing secret |
+| `AUTH_STRATEGY` | `JWT` or `SESSION` |
+| `REFRESH_TOKENS_ENABLED` | Enable JWT refresh-token flow |
+| `REDIS_HOST`, `REDIS_PORT` | Redis connection |
+| `BROKER_URL` | Celery broker URL |
+| `RESEND_KEY`, `SENDER_EMAIL` | Email delivery |
+| `APP_BASE_URL` | Base URL used in email links |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CLIENT_URI` | Google OAuth |
+| `GITHUB_CLIENT_ID`, `GITHUB_SECRET`, `GITHUB_CLIENT_URI` | GitHub OAuth |
+| `TOTP` | Enable TOTP 2FA routes |
+| `TOTP_SECRET` | Fernet key for encrypting TOTP secrets |
+| `is_production` | Secure-cookie toggle |
 
-## Design Decisions
+## Test
 
-**Why identical errors for wrong password and unknown email**  
-Different responses let attackers enumerate which emails are registered. Both cases return the same message and take the same processing time.
+```bash
+pytest
+```
 
-**Why refresh tokens are stored in Postgres**  
-JWTs are stateless — once issued they cannot be revoked before expiry. Storing refresh tokens in the database makes real revocation possible. When a user logs out or changes their password, the refresh token is marked revoked and no new access tokens can be issued.
-
-**Why the auth backend is a swappable interface**  
-JWT and session auth make different tradeoffs. JWT scales horizontally without shared state but cannot truly revoke tokens. Sessions are revocable and simpler to reason about but require Redis on every request. Neither is universally better — the right choice depends on the application. Building both behind a shared interface means the decision can change without touching the rest of the codebase.
-
-**Why authorization lives in the dependency layer**  
-Putting role checks inside route handlers couples access control to business logic. A composable `require_role()` dependency keeps routes clean and makes access control auditable in one place.
-
----
-
-## Roadmap
-
-- Refresh token rotation with reuse detection
-- Device and session management
-- OAuth2 social login (Google, GitHub)
-- TOTP two-factor authentication
-- Magic link passwordless login
-- Audit log
-- API key authentication
-- Rate limiting per endpoint
-- Docker Compose

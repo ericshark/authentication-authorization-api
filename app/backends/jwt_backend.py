@@ -1,23 +1,15 @@
-from datetime import datetime, timezone
 from typing import override
 
-from argon2 import PasswordHasher
 from fastapi import HTTPException, Request, Response
 from redis import Redis
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from app.auth.jwt_utils import (
-    refresh_hash,
-    set_jwt_cookie,
-    set_refresh_cookie,
-    verify_jwt,
-)
+from app.auth.cookies import set_jwt_cookie, set_refresh
+from app.auth.tokens import hash_token, verify_jwt
 from app.backends.base import AuthBackend
 from app.core.config import settings
 from app.models import RefreshToken, User
-
-ph = PasswordHasher()
 
 
 class JWTBackend(AuthBackend):
@@ -29,7 +21,7 @@ class JWTBackend(AuthBackend):
 
         set_jwt_cookie(response, user)
         if settings.REFRESH_TOKENS_ENABLED:
-            set_refresh_cookie(response, db, user, request)
+            set_refresh(response, db, user, request)
             db.commit()
         return {"message": "success"}
 
@@ -55,7 +47,7 @@ class JWTBackend(AuthBackend):
             return {"message": "logged out"}
         raw_token = request.cookies.get("refresh_token")
         if raw_token:
-            hashed_token = refresh_hash(raw_token)
+            hashed_token = hash_token(raw_token)
             response.delete_cookie("refresh_token")
             stmt = (
                 update(RefreshToken)
