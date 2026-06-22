@@ -49,9 +49,15 @@ def register(
         db.add(user)
         db.commit()
         db.refresh(user)
+        logger.info("New account registered: user %s (%s)", user.id, user.username)
         return get_auth_backend().registered(db, user, response, redis, request)
     except IntegrityError:
         db.rollback()
+        logger.warning(
+            "Registration conflict for username=%s email=%s",
+            new_user.username,
+            new_user.email,
+        )
         raise HTTPException(status_code=400, detail="Username or email already exists")
 
 
@@ -69,6 +75,7 @@ def login(
         stmt = select(User).where(User.username == form.username)
         user = db.execute(stmt).scalar_one()
         if not user.is_active:
+            logger.warning("Login attempt on inactive account: %s", form.username)
             raise HTTPException(
                 status_code=400, detail="Incorrect password or username"
             )
@@ -77,10 +84,13 @@ def login(
         if settings.TOTP and user.totp_enabled:
             temp_token = secrets.token_hex(32)
             redis.set(f"2faTempToken:{user.id}", temp_token, ex=60 * 5)
+            logger.info("Login passed password step, awaiting 2FA: user %s", user.id)
             return {"requires_2fa": True, "temp_token": temp_token, "user_id": user.id}
 
+        logger.info("Successful login: user %s (%s)", user.id, user.username)
         return get_auth_backend().registered(db, user, response, redis, request)
     except (VerifyMismatchError, NoResultFound):
+        logger.warning("Failed login attempt for username=%s", form.username)
         increment_limit(key, redis)
         raise HTTPException(status_code=400, detail="Incorrect password or username")
 
@@ -93,6 +103,7 @@ def logout(
     user: Annotated[User, Depends(get_current_user)],
     redis: redis_dep,
 ):
+    logger.info("User %s logged out", user.id)
     return get_auth_backend().logout(response, request, db, user, redis)
 
 
@@ -104,6 +115,7 @@ def logout_all(
     user: Annotated[User, Depends(get_current_user)],
     redis: redis_dep,
 ):
+    logger.info("User %s logged out of all sessions", user.id)
     return get_auth_backend().logout_all(response, request, db, user, redis)
 
 
@@ -131,6 +143,11 @@ def refresh_token(
     if expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=401, detail="Not authorized")
     if not refresh_item.valid:
+        logger.warning(
+            "Refresh token reuse detected; invalidating family %s for user %s",
+            refresh_item.family_id,
+            refresh_item.user_id,
+        )
         stmt = (
             update(RefreshToken)
             .where(RefreshToken.family_id == refresh_item.family_id)
@@ -146,6 +163,7 @@ def refresh_token(
     set_refresh(response, db, user, request, refresh_item.family_id)
     set_jwt_cookie(response, user)
     db.commit()
+    logger.info("Rotated refresh token and issued new JWT for user %s", user.id)
     return {"message": "success new jwt"}
 
 
@@ -171,6 +189,7 @@ def request_verification(
     token = secrets.token_hex(32)
     redis.set(f"verify:{token}", str(user.id), ex=VERIFICATION_TOKEN_TTL)
     send_verification_email_task.delay(user.email, user.email, token)
+    logger.info("Verification email queued for user %s", user.id)
     return {"message": "Verification email sent"}
 
 
@@ -189,6 +208,7 @@ def verify_email(
     user.is_verified = True
     redis.delete(f"verify:{token}")
     db.commit()
+    logger.info("Email verified for user %s", user.id)
     return {"message": "Email verified successfully"}
 
 
@@ -210,6 +230,7 @@ def request_magic_link(
         token = secrets.token_hex(32)
         redis.set(f"magic:{token}", str(user.id), ex=MAGIC_LINK_TTL)
         send_magic_link_task.delay(user.email, user.email, token)
+        logger.info("Magic link queued for user %s", user.id)
     return {"message": "If that email is registered, a magic link has been sent"}
 
 
@@ -228,4 +249,5 @@ def verify_magic_link(
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found")
     redis.delete(f"magic:{token}")
+    logger.info("Magic link login for user %s", user.id)
     return get_auth_backend().registered(db, user, response, redis, request)

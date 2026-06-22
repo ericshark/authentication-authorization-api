@@ -45,6 +45,7 @@ async def google_callback(
         google_id = user_info.get("sub")
         email = user_info.get("email")
         if not google_id or not email:
+            logger.warning("Google OAuth callback returned incomplete user info")
             raise HTTPException(status_code=400, detail="Invalid Google user info")
 
         # check if social account exists
@@ -69,6 +70,7 @@ async def google_callback(
                 user = User(email=email, username=email.split("@")[0], password=None)
                 db.add(user)
                 db.flush()  # get user.id without committing
+                logger.info("Created new user %s via Google OAuth", user.id)
 
             # link social account to user
             social = SocialAccount(
@@ -79,10 +81,13 @@ async def google_callback(
             db.add(social)
             db.commit()
             db.refresh(user)
+            logger.info("Linked Google account to user %s", user.id)
 
         # issue your normal JWT/session
+        logger.info("Google OAuth login for user %s", user.id)
         return get_auth_backend().registered(db, user, response, r, request)
     except OAuthError:
+        logger.warning("Google OAuth authentication failed", exc_info=True)
         raise HTTPException(status_code=400, detail="OAuth authentication failed")
 
 
@@ -125,6 +130,7 @@ async def github_callback(
                 primary = next((e for e in emails if e.get("primary")), None)
                 email = primary.get("email") if primary else None
             if not email:
+                logger.warning("GitHub OAuth callback returned no usable email")
                 raise HTTPException(
                     status_code=400,
                     detail="Please make your GitHub email public to use this login method",
@@ -146,12 +152,16 @@ async def github_callback(
                 user = User(email=email, username=email.split("@")[0], password=None)
                 db.add(user)
                 db.flush()
+                logger.info("Created new user %s via GitHub OAuth", user.id)
             social = SocialAccount(
                 provider="github", provider_id=github_id, user_id=user.id
             )
             db.add(social)
             db.commit()
             db.refresh(user)
+            logger.info("Linked GitHub account to user %s", user.id)
+        logger.info("GitHub OAuth login for user %s", user.id)
         return get_auth_backend().registered(db, user, response, r, request)
     except OAuthError:
+        logger.warning("GitHub OAuth authentication failed", exc_info=True)
         raise HTTPException(status_code=400, detail="OAuth authentication failed")

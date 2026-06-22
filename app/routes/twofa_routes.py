@@ -42,6 +42,7 @@ def get_2fa(
 
     db.commit()
     qr_base64 = create_qr_code(uri)
+    logger.info("2FA setup initiated for user %s", user.id)
     return {
         "qr_code": f"data:image/png;base64,{qr_base64}",
         "secret": secret,  # for manual entry if they can't scan
@@ -63,8 +64,10 @@ def confirm_2fa(
         hashed_codes = [hash_token(backup_codes[x]) for x in range(10)]
         user.backup_codes = hashed_codes
         db.commit()
+        logger.info("2FA enabled for user %s", user.id)
         return {"message": "successful 2fa", "backup_codes": backup_codes}
     else:
+        logger.warning("2FA confirmation failed (invalid code): user %s", user.id)
         raise HTTPException(status_code=401, detail="Invalid Code")
 
 
@@ -82,13 +85,16 @@ def verify_2fa(
     is_limit_reached(key, redis)
     stored_secret = redis.get(f"2faTempToken:{user_id}")
     if stored_secret != user_data.temp_token:
+        logger.warning("2FA verify with invalid temp token: user %s", user_id)
         increment_limit(key, redis)
         raise HTTPException(status_code=401, detail="Invalid")
     user = db.get(User, user_id)
     if not user or not user.is_active:
+        logger.warning("2FA verify for missing/inactive user %s", user_id)
         increment_limit(key, redis)
         raise HTTPException(status_code=401, detail="Invalid")
     valid = False
+    used_backup_code = False
     if len(user_data.code) == 6:
         secret = decrypt_secret(user.totp_secret)
         totp = pyotp.TOTP(secret)
@@ -96,9 +102,35 @@ def verify_2fa(
             valid = True
     elif "-" in user_data.code and verify_backup_code(user_data.code, user):
         valid = True
+        used_backup_code = True
         db.commit()
     if not valid:
+        logger.warning("2FA verify failed (invalid code): user %s", user_id)
         increment_limit(key, redis)
         raise HTTPException(status_code=401, detail="Invalid Code")
     redis.delete(f"2faTempToken:{user_id}")
+    logger.info(
+        "2FA verification succeeded for user %s (backup_code=%s)",
+        user_id,
+        used_backup_code,
+    )
     return get_auth_backend().registered(db, user, response, redis, request)
+
+
+@router.post("/2fa/disable")
+def disable_2fa(
+    db: db_dep, user: get_user_dep, _: check_2fa_dep, secret_token: SecretToken
+):
+    if not user.totp_enabled:
+        raise HTTPException(status_code=400, detail="2FA is not enabled")
+    secret = decrypt_secret(user.totp_secret)
+    totp = pyotp.TOTP(secret)
+    if not totp.verify(secret_token.secret_token, valid_window=1):
+        logger.warning("2FA disable failed (invalid code): user %s", user.id)
+        raise HTTPException(status_code=401, detail="Invalid Code")
+    user.totp_enabled = False
+    user.totp_secret = None
+    user.backup_codes = None
+    db.commit()
+    logger.info("2FA disabled for user %s", user.id)
+    return {"message": "2FA disabled"}

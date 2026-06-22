@@ -38,10 +38,12 @@ def update_password(
     try:
         verify_password(user.password, passwords.old_password)
     except VerifyMismatchError:
+        logger.warning("Password change rejected (wrong old password): user %s", user.id)
         raise HTTPException(status_code=400, detail="Incorrect password")
     user.password = hash_password(passwords.new_password)
     db.commit()
     get_auth_backend().logout_all(response, request, db, user, redis)
+    logger.info("Password changed and all sessions revoked for user %s", user.id)
     return {"message": "Password updated successfully"}
 
 
@@ -60,6 +62,7 @@ def forgot_password(
         token = secrets.token_hex(32)
         redis.set(f"reset:{token}", str(user.id), ex=PASSWORD_RESET_TTL)
         send_password_reset_task.delay(user.email, user.email, token)
+        logger.info("Password reset link queued for user %s", user.id)
     return {"message": "If that email is registered, a reset link has been sent"}
 
 
@@ -78,4 +81,5 @@ def reset_password(
     user.password = hash_password(payload.new_password)
     redis.delete(f"reset:{payload.token}")
     db.commit()
+    logger.info("Password reset completed for user %s", user.id)
     return {"message": "Password reset successfully"}

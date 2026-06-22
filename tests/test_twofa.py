@@ -315,6 +315,80 @@ def test_2fa_verify_rate_limit_blocks_valid_code(
 
 
 # ---------------------------------------------------------------------------
+# /2fa/disable
+# ---------------------------------------------------------------------------
+def _enable_2fa(client, monkeypatch):
+    enable_totp(monkeypatch)
+    client.post("/auth/register", json=REGISTER_PAYLOAD)
+    secret = client.post("/auth/2fa/setup").json()["secret"]
+    client.post(
+        "/auth/2fa/confirm",
+        json={"secret_token": pyotp.TOTP(secret).now()},
+    )
+    return secret
+
+
+def test_2fa_disable_with_valid_code(client, use_jwt, db, monkeypatch):
+    secret = _enable_2fa(client, monkeypatch)
+
+    resp = client.post(
+        "/auth/2fa/disable",
+        json={"secret_token": pyotp.TOTP(secret).now()},
+    )
+
+    assert resp.status_code == 200
+    db.expire_all()
+    user = db.execute(select(User).where(User.username == "john")).scalar_one()
+    assert user.totp_enabled is False
+    assert user.totp_secret is None
+    assert user.backup_codes is None
+
+
+def test_2fa_disable_invalid_code(client, use_jwt, db, monkeypatch):
+    _enable_2fa(client, monkeypatch)
+
+    resp = client.post(
+        "/auth/2fa/disable",
+        json={"secret_token": "000000"},
+    )
+
+    assert resp.status_code == 401
+    db.expire_all()
+    user = db.execute(select(User).where(User.username == "john")).scalar_one()
+    assert user.totp_enabled is True
+
+
+def test_2fa_disable_when_not_enabled(client, use_jwt, db, monkeypatch):
+    enable_totp(monkeypatch)
+    client.post("/auth/register", json=REGISTER_PAYLOAD)
+
+    resp = client.post(
+        "/auth/2fa/disable",
+        json={"secret_token": "000000"},
+    )
+
+    assert resp.status_code == 400
+
+
+def test_login_no_longer_requires_2fa_after_disable(client, use_jwt, db, monkeypatch):
+    secret = _enable_2fa(client, monkeypatch)
+    client.post(
+        "/auth/2fa/disable",
+        json={"secret_token": pyotp.TOTP(secret).now()},
+    )
+
+    client.cookies.clear()
+    resp = client.post(
+        "/auth/login",
+        data={"username": "john", "password": "secret123"},
+    )
+
+    assert resp.status_code == 200
+    assert "access_token" in resp.cookies
+    assert "requires_2fa" not in resp.json()
+
+
+# ---------------------------------------------------------------------------
 # /2fa/verify — session backend
 # ---------------------------------------------------------------------------
 def test_2fa_full_flow_session_backend(client, use_session, db, monkeypatch):
