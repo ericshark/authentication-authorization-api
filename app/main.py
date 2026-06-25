@@ -11,7 +11,17 @@ from app.routes import (
 )
 from app.core.config import settings
 from starlette.middleware.sessions import SessionMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 logging.basicConfig(
     level=logging.DEBUG,
     format=" %(levelname)s: %(name)s: %(message)s",
