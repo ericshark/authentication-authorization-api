@@ -29,7 +29,6 @@ logging.basicConfig(
     #    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
-app = FastAPI()
 
 app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
 
