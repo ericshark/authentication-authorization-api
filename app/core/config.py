@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import ConfigDict, field_validator
+from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 
 
@@ -26,14 +26,7 @@ class Settings(BaseSettings):
     GITHUB_CLIENT_URI: str
     TOTP: bool
     TOTP_SECRET: str
-    CORS_ORIGINS: list[str]
-
-    @field_validator("CORS_ORIGINS", mode="before")
-    @classmethod
-    def parse_origins(cls, value):
-        if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",")]
-        return value
+    CORS_ORIGINS: list[str] = []
 
 
 settings = Settings()
