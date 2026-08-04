@@ -8,6 +8,7 @@ from app.routes import (
     twofa_routes,
     user_routes,
     admin_routes,
+    system_routes,
 )
 from app.core.config import settings
 from starlette.middleware.sessions import SessionMiddleware
@@ -38,6 +39,7 @@ app.include_router(user_routes.router, prefix="/users", tags=["users"])
 app.include_router(oauth_routes.router, prefix="/auth", tags=["oauth"])
 app.include_router(password_routes.router, prefix="/auth", tags=["password"])
 app.include_router(twofa_routes.router, prefix="/auth", tags=["two-fa"])
+app.include_router(system_routes.router, tags=["system"])
 
 
 @app.get("/")

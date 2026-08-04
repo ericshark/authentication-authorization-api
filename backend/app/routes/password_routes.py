@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from app.auth.lockout import increment_limit, is_limit_reached
 from app.auth.passwords import hash_password, verify_password
+from app.auth.request_info import get_device_name, get_ip_address
 from app.core.dependencies import db_dep, get_auth_backend, get_user_dep, redis_dep
 from app.models import User
 from app.schemas import (
@@ -17,6 +18,7 @@ from app.schemas import (
 from app.tasks.email_tasks import (
     send_password_reset_task,
 )
+from app.services.activity_service import record_activity
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +40,20 @@ def update_password(
     try:
         verify_password(user.password, passwords.old_password)
     except VerifyMismatchError:
-        logger.warning("Password change rejected (wrong old password): user %s", user.id)
+        logger.warning(
+            "Password change rejected (wrong old password): user %s", user.id
+        )
         raise HTTPException(status_code=400, detail="Incorrect password")
     user.password = hash_password(passwords.new_password)
     db.commit()
+    record_activity(
+        redis,
+        user.id,
+        "password.changed",
+        detail="Changed the account password and revoked every session",
+        ip_address=get_ip_address(request),
+        device_name=get_device_name(request),
+    )
     get_auth_backend().logout_all(response, request, db, user, redis)
     logger.info("Password changed and all sessions revoked for user %s", user.id)
     return {"message": "Password updated successfully"}
@@ -81,5 +93,11 @@ def reset_password(
     user.password = hash_password(payload.new_password)
     redis.delete(f"reset:{payload.token}")
     db.commit()
+    record_activity(
+        redis,
+        user.id,
+        "password.reset",
+        detail="Reset the account password with an email token",
+    )
     logger.info("Password reset completed for user %s", user.id)
     return {"message": "Password reset successfully"}

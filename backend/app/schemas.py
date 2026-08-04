@@ -19,6 +19,8 @@ class UserOut(UserBase):
     id: int
     date_created: datetime
     is_active: bool
+    is_verified: bool
+    totp_enabled: bool
     role: RoleEnum
     model_config = ConfigDict(from_attributes=True)
 
@@ -52,9 +54,12 @@ class MagicLinkRequest(BaseModel):
 
 
 class SessionOutput(BaseModel):
+    id: str
     user_id: int
-    ip_address: str
-    device_name: str
+    ip_address: str | None
+    device_name: str | None
+    current: bool = False
+    last_active: datetime | None = None
     expires_at: datetime
 
 
@@ -66,3 +71,28 @@ class Verify2fa(BaseModel):
 
 class SecretToken(BaseModel):
     secret_token: str
+
+
+class ActivityOutput(BaseModel):
+    id: str
+    action: str
+    detail: str
+    ip_address: str | None = None
+    device_name: str | None = None
+    created_at: datetime
+
+
+class SecurityCheck(BaseModel):
+    id: str
+    label: str
+    complete: bool
+    points: int
+
+
+class AccountOverview(BaseModel):
+    user: UserOut
+    security_score: int
+    security_checks: list[SecurityCheck]
+    active_sessions: int
+    connected_providers: list[str]
+    auth_strategy: str

@@ -28,6 +28,8 @@ def test_get_sessions_lists_active_jwt(jwt_refresh_client):
     data = response.json()
     assert len(data) >= 1
     assert {"user_id", "ip_address", "device_name", "expires_at"} <= data[0].keys()
+    assert data[0]["id"]
+    assert any(session["current"] for session in data)
 
 
 def test_get_sessions_lists_active_session(session_client):

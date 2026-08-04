@@ -15,6 +15,7 @@ from app.auth.lockout import (
     is_limit_reached,
 )
 from app.auth.passwords import hash_password, verify_password
+from app.auth.request_info import get_device_name, get_ip_address
 from app.auth.tokens import hash_token
 from app.backends.jwt_backend import JWTBackend
 from app.core.config import settings
@@ -28,6 +29,7 @@ from app.tasks.email_tasks import (
     send_magic_link_task,
     send_verification_email_task,
 )
+from app.services.activity_service import record_activity
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +52,16 @@ def register(
         db.commit()
         db.refresh(user)
         logger.info("New account registered: user %s (%s)", user.id, user.username)
-        return get_auth_backend().registered(db, user, response, redis, request)
+        result = get_auth_backend().registered(db, user, response, redis, request)
+        record_activity(
+            redis,
+            user.id,
+            "account.registered",
+            detail="Created account and started the first authenticated session",
+            ip_address=get_ip_address(request),
+            device_name=get_device_name(request),
+        )
+        return result
     except IntegrityError:
         db.rollback()
         logger.warning(
@@ -88,7 +99,16 @@ def login(
             return {"requires_2fa": True, "temp_token": temp_token, "user_id": user.id}
 
         logger.info("Successful login: user %s (%s)", user.id, user.username)
-        return get_auth_backend().registered(db, user, response, redis, request)
+        result = get_auth_backend().registered(db, user, response, redis, request)
+        record_activity(
+            redis,
+            user.id,
+            "auth.login",
+            detail="Signed in with username and password",
+            ip_address=get_ip_address(request),
+            device_name=get_device_name(request),
+        )
+        return result
     except (VerifyMismatchError, NoResultFound):
         logger.warning("Failed login attempt for username=%s", form.username)
         increment_limit(key, redis)
@@ -104,6 +124,14 @@ def logout(
     redis: redis_dep,
 ):
     logger.info("User %s logged out", user.id)
+    record_activity(
+        redis,
+        user.id,
+        "auth.logout",
+        detail="Signed out of the current session",
+        ip_address=get_ip_address(request),
+        device_name=get_device_name(request),
+    )
     return get_auth_backend().logout(response, request, db, user, redis)
 
 
@@ -116,6 +144,14 @@ def logout_all(
     redis: redis_dep,
 ):
     logger.info("User %s logged out of all sessions", user.id)
+    record_activity(
+        redis,
+        user.id,
+        "auth.logout_all",
+        detail="Signed out every active device",
+        ip_address=get_ip_address(request),
+        device_name=get_device_name(request),
+    )
     return get_auth_backend().logout_all(response, request, db, user, redis)
 
 
@@ -169,7 +205,7 @@ def refresh_token(
 
 @router.get("/health")
 def get_health():
-    pass
+    return {"status": "ok", "scope": "authentication"}
 
 
 VERIFICATION_TOKEN_TTL = 60 * 60  # 1 hour
@@ -208,6 +244,12 @@ def verify_email(
     user.is_verified = True
     redis.delete(f"verify:{token}")
     db.commit()
+    record_activity(
+        redis,
+        user.id,
+        "email.verified",
+        detail="Verified the account email address",
+    )
     logger.info("Email verified for user %s", user.id)
     return {"message": "Email verified successfully"}
 
@@ -250,4 +292,13 @@ def verify_magic_link(
         raise HTTPException(status_code=401, detail="User not found")
     redis.delete(f"magic:{token}")
     logger.info("Magic link login for user %s", user.id)
-    return get_auth_backend().registered(db, user, response, redis, request)
+    result = get_auth_backend().registered(db, user, response, redis, request)
+    record_activity(
+        redis,
+        user.id,
+        "auth.magic_link",
+        detail="Signed in with a one-time email link",
+        ip_address=get_ip_address(request),
+        device_name=get_device_name(request),
+    )
+    return result

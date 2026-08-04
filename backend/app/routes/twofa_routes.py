@@ -21,6 +21,7 @@ from app.core.dependencies import (
 )
 from app.models import User
 from app.schemas import SecretToken, Verify2fa
+from app.services.activity_service import record_activity
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -51,7 +52,11 @@ def get_2fa(
 
 @router.post("/2fa/confirm")
 def confirm_2fa(
-    db: db_dep, user: get_user_dep, _: check_2fa_dep, secret_token: SecretToken
+    db: db_dep,
+    user: get_user_dep,
+    redis: redis_dep,
+    _: check_2fa_dep,
+    secret_token: SecretToken,
 ):
     secret = decrypt_secret(user.totp_secret)
     totp = pyotp.TOTP(secret)
@@ -64,6 +69,12 @@ def confirm_2fa(
         hashed_codes = [hash_token(backup_codes[x]) for x in range(10)]
         user.backup_codes = hashed_codes
         db.commit()
+        record_activity(
+            redis,
+            user.id,
+            "two_factor.enabled",
+            detail="Enabled authenticator-app two-factor authentication",
+        )
         logger.info("2FA enabled for user %s", user.id)
         return {"message": "successful 2fa", "backup_codes": backup_codes}
     else:
@@ -119,7 +130,11 @@ def verify_2fa(
 
 @router.post("/2fa/disable")
 def disable_2fa(
-    db: db_dep, user: get_user_dep, _: check_2fa_dep, secret_token: SecretToken
+    db: db_dep,
+    user: get_user_dep,
+    redis: redis_dep,
+    _: check_2fa_dep,
+    secret_token: SecretToken,
 ):
     if not user.totp_enabled:
         raise HTTPException(status_code=400, detail="2FA is not enabled")
@@ -132,5 +147,11 @@ def disable_2fa(
     user.totp_secret = None
     user.backup_codes = None
     db.commit()
+    record_activity(
+        redis,
+        user.id,
+        "two_factor.disabled",
+        detail="Disabled authenticator-app two-factor authentication",
+    )
     logger.info("2FA disabled for user %s", user.id)
     return {"message": "2FA disabled"}
