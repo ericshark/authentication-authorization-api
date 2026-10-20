@@ -16,7 +16,7 @@ FastAPI authentication API with cookie-based JWT or Redis-backed sessions, accou
 - TOTP two-factor authentication with encrypted secrets, backup codes, and rate-limited verification
 - Celery email jobs, Jinja email templates, and Resend delivery
 - Docker Compose for API, Celery, Postgres, and Redis
-- 128 pytest cases covering auth flows, login lockout, role-based access, sessions, refresh tokens, OAuth, magic links, password reset, email verification, 2FA, and user deletion
+- 135 pytest cases covering auth flows, login lockout, role-based access, sessions, refresh tokens, OAuth, magic links, password reset, email verification, 2FA, and user deletion
 
 ## Stack
 
